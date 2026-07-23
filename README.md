@@ -1,6 +1,7 @@
 # MLOps and Web App: Template Framework for Traceable Machine Learning, Artificial Intelligence and Web Applications
 This repository contains [copier templates](https://copier.readthedocs.io/en/stable/) for deploying MLOps infrastructure and web applications. Brought to you by the [Perioperative Data Science Team at the University of Alabama, Birmingham](https://sites.uab.edu/periop-datascience/).
 
+Corresponding publication available [here](https://doi.org/10.1016/j.softx.2024.101723) Please cite if you find useful in your work. 
 ## Setting up the Environment
 The application was built and tested in a Windows Subsystem for Linux 2 (WSL2) environment.  The software should work in either a WSL2 or Linux environment. If you are using a Linux environment, skip the installation steps for WSL2.  While it is possible to get this tool to work without all these steps, we highly encourage users to install WSL2, Docker, and VSCode for the optimal experience using this software.
 
