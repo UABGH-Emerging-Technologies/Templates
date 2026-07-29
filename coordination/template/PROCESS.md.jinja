@@ -24,12 +24,14 @@ One shared board per project (not per developer — the whole point is that all 
 | **Todo** | Shaped and ready to execute — an agent (or human) could pick this up cold. | Work starts → Agent working (or the human just does it). |
 | **Agent working** | A coding agent is actively executing. Draft PRs live here too — a draft PR means the agent isn't done, not that review is owed. | PR opens for review → Awaiting code review. |
 | **Awaiting code review** | A diff exists; the asked-for act is code review + merge. | Clean review → merge → Done. |
-| **Awaiting human action** | No diff. A decision, sign-off, or real-world act. | The human acts: comment carries the substance, closing the issue is the signal. |
+| **Awaiting human action** | No diff. A decision, sign-off, or real-world act. | The human acts: comment carries the substance; **close = decision complete** (approve or reject). A change-request comment instead bounces the card to Agent working and back — see signals vs payload. |
 | **Done** | Merged / approved / verified. Closed issues are ground truth, so this column is real, not decorative. | — |
 
 **There is deliberately no Blocked column.** "Blocked" answers *nobody acts next*, which is how columns become graveyards. Blocked-on-a-human **is** Awaiting human action. Blocked-on-other-work stays in Unshaped (or Todo) with its gate named in the body. Every column answers "who acts next" — that's the invariant.
 
-**Unshaped is Shape Up vocabulary on purpose.** Converting a draft item into a real issue *is* the shaping act: writing a description so self-contained that an agent (or a stakeholder reading a relayed packet) can act without the conversation that produced it. Cheap code made this more important, not less — agents exploit ambiguity worse than humans do.
+**Unshaped is Shape Up vocabulary on purpose.** Converting a draft item into a real issue *is* the shaping act: writing a description so self-contained that an agent (or a stakeholder reading a relayed packet) can act without the conversation that produced it. Cheap code made this more important, not less — agents exploit ambiguity worse than humans do. (Comments added to a card later are part of its spec: agents read them at pickup, and surface — never guess — when a comment contradicts the body.)
+
+**Who shapes: shaping is human-triggered; agents draft, humans ratify.** Promoting drafts to Todo is choosing what the team works on next — a bet, not a lookup — so it never happens without a human asking. Default mode: a human says "shape the next block," the agent mines the plan docs and writes the cards, the human ratifies by skimming (editing or demoting a card is cheap). For contested bets, talk it through first and file the cards as the outcome; and nothing stops a human shaping by hand in the UI. An agent may *offer* to shape when the board runs dry — the promotion waits for a yes.
 
 ### Card anatomy
 
@@ -44,6 +46,8 @@ One shared board per project (not per developer — the whole point is that all 
 
 A card *move* is the signal; the *substance* travels as an issue comment. "Approve with this caveat" = comment with the caveat, then close. Agents read the comments whenever they see a state change. A closed `human-review` issue with no contrary comment means approved. Relayed stakeholder decisions become exactly comment (with attribution: "Approved by 〈name〉, relayed by 〈assignee〉: …") + close — indistinguishable from a GitHub-native approval.
 
+Humans also deliver payload *without* closing — often correctly: **close is reserved for "my decision on this gate is complete."** Feedback that implies more work is the *middle* of a gate. The `next` procedure scans open gates for unacknowledged human comments: an explicit complete decision is processed and the agent restores the missing signal (closes with attribution); a **change request re-arms the gate** — the card oscillates to Agent working while the agent revises, then back to Awaiting human action with a reply saying what changed (one card, N rounds, same semantics as change-requests on a PR); a question gets answered; anything ambiguous is surfaced, never guessed at.
+
 ## The actors
 
 - **Developers** shape work, review diffs, and drain their judgment queue in batches — the "Awaiting" columns are the batching buffer.
@@ -56,6 +60,7 @@ A card *move* is the signal; the *substance* travels as an issue comment. "Appro
 - **Merged-but-not-pulled is invisible to sessions.** Commands/skills and conventions land on origin/main via PRs, but a session only sees its working tree — and tools discover commands at session start. Symptom: a reopened session doesn't offer `/next`. Fix: ff-pull, restart once. `process/next.md` step 0 checks for this.
 - Editing a Projects v2 single-select field's options (rename **or** add) **regenerates every option ID and silently clears every card's value** — snapshot `item-list` first, re-apply after, then re-wire the board's built-in workflows (Item closed → Done etc.) in the UI.
 - `gh project item-list` defaults to 30 items and silently truncates — always `--limit 100`.
+- **Two sessions running `next` at once can race on the same card**: Projects v2 has no atomic test-and-set. Arbitration rides the issue comment stream (append-only, ordered by comment ID): claim with a nonce-stamped comment, re-fetch, lowest ID wins, loser marks itself superseded. Protocol in `process/next.md`.
 - The Actions `GITHUB_TOKEN` cannot touch Projects v2; board mutations happen from local sessions via `gh` (token needs the `project` scope).
 - Markdown edits during board reconciliation go through a temporary worktree + PR, never the launch working tree (a parallel session's `commit -a` can sweep dirty files).
 
