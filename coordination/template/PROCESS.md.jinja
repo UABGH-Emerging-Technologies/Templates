@@ -1,0 +1,67 @@
+# How humans and agents work together on {{ project_name }}
+
+This is the rationale document for the coordination process — the *why* behind the terse conventions in `AGENTS.md` (CLAUDE.md imports it), which agents follow mechanically. Read this once as a human joining the project; agents don't need it. The pattern was developed and piloted on `UABGH-Emerging-Technologies/lead-infinitely` (2026-07); canonical home: the `coordination/` template in `UABPeriopAI/Templates`.
+
+## The premise
+
+Coding agents made writing code cheap. What they did not make cheap: deciding what to build, reviewing what got built, and the human sign-offs that gate real-world use. So the scarce resource is **human judgment**, and the process is designed as queue management for it:
+
+- **Agents enqueue judgment requests** (a PR to review, a packet to approve, a decision to make) as cards.
+- **Humans drain the queue in batches**, on their schedule — the board is a mailbox, not a pager.
+- Everything else (what the code does, why decisions were made, how to cold-start) lives in the repo's markdown files, which agents read fluently and keep current.
+
+The split that makes this work: **the board holds coordination state; the md files hold knowledge.** A card is a title, a state, an owner, and a link. If you're writing paragraphs into a card, stop — that content belongs in a notes file, a HUMAN-REVIEW-QUEUE entry, or the PR, with the card linking to it.
+
+## The board
+
+One shared board per project (not per developer — the whole point is that all open human gates are visible in one place). Personal views come from filtering by assignee, not from separate boards.
+
+### Columns, precisely
+
+| Column | Meaning | How a card leaves |
+|---|---|---|
+| **Unshaped** | The fluid project plan: everything we believe we'll do, as cheap one-line **draft items** (board-only, not repo issues). Carries source + gate only. | Someone *shapes* it: writes a self-contained description, converts draft → real issue, adds labels/assignee/Responsible, moves to Todo. |
+| **Todo** | Shaped and ready to execute — an agent (or human) could pick this up cold. | Work starts → Agent working (or the human just does it). |
+| **Agent working** | A coding agent is actively executing. Draft PRs live here too — a draft PR means the agent isn't done, not that review is owed. | PR opens for review → Awaiting code review. |
+| **Awaiting code review** | A diff exists; the asked-for act is code review + merge. | Clean review → merge → Done. |
+| **Awaiting human action** | No diff. A decision, sign-off, or real-world act. | The human acts: comment carries the substance, closing the issue is the signal. |
+| **Done** | Merged / approved / verified. Closed issues are ground truth, so this column is real, not decorative. | — |
+
+**There is deliberately no Blocked column.** "Blocked" answers *nobody acts next*, which is how columns become graveyards. Blocked-on-a-human **is** Awaiting human action. Blocked-on-other-work stays in Unshaped (or Todo) with its gate named in the body. Every column answers "who acts next" — that's the invariant.
+
+**Unshaped is Shape Up vocabulary on purpose.** Converting a draft item into a real issue *is* the shaping act: writing a description so self-contained that an agent (or a stakeholder reading a relayed packet) can act without the conversation that produced it. Cheap code made this more important, not less — agents exploit ambiguity worse than humans do.
+
+### Card anatomy
+
+- **Title**: the ask, imperative, glanceable.
+- **Status**: the column.
+- **Assignee** (GitHub account): the *accountable human*. **Every card gets one — assigning the wrong human beats assigning no one.** With multiple developers, the assignee also partitions the board into lanes: *an agent starts work only on cards assigned to its own operator.* Bookkeeping and cleared-gate processing are deliberately **not** lane-scoped (global, idempotent-or-claimed — see `process/next.md`): otherwise a cleared gate's follow-on work would wait not for a human decision but for *a particular human to open a session*, the anti-pattern this design exists to avoid.
+- **Responsible** (custom single-select): who *actually acts* — including actors GitHub can't represent: `AI agent` (the coding agent, whichever tool the developer runs), each developer, each stakeholder, `Copilot (AI reviewer)`.
+- **Labels**: `human-review`, `agent-work`, `stakeholder` (routes the card to relay delivery for non-GitHub stakeholders).
+- **Body**: the self-contained ask + link(s) to the substance. Nothing else.
+
+### Signals vs payload
+
+A card *move* is the signal; the *substance* travels as an issue comment. "Approve with this caveat" = comment with the caveat, then close. Agents read the comments whenever they see a state change. A closed `human-review` issue with no contrary comment means approved. Relayed stakeholder decisions become exactly comment (with attribution: "Approved by 〈name〉, relayed by 〈assignee〉: …") + close — indistinguishable from a GitHub-native approval.
+
+## The actors
+
+- **Developers** shape work, review diffs, and drain their judgment queue in batches — the "Awaiting" columns are the batching buffer.
+- **Agent sessions** (any coding agent — Claude Code, OpenCode, Codex, …; the protocol is tool-neutral, only entry points differ) file cards, move their own cards truthfully, and orient with the `next` procedure when — and only when — their human invokes it. Agents are not daemons: when no session runs, moves queue harmlessly.
+- **Non-GitHub stakeholders** get `stakeholder`-labeled cards by **relay**: the assignee shows them the packet (email, meeting), then records the decision on the issue.
+- **Reviewers**: Copilot code review on every PR push, with the **context-blind fresh-agent fallback** when Copilot is unavailable — a fresh agent, any strong model, prompted essentially only "Review PR #n," deliberately denied the authoring conversation. Fresh eyes catch the author's own staleness; never make one reviewer a hard dependency.
+
+## Known gotchas (learned on the pilot, 2026-07)
+
+- **Merged-but-not-pulled is invisible to sessions.** Commands/skills and conventions land on origin/main via PRs, but a session only sees its working tree — and tools discover commands at session start. Symptom: a reopened session doesn't offer `/next`. Fix: ff-pull, restart once. `process/next.md` step 0 checks for this.
+- Editing a Projects v2 single-select field's options (rename **or** add) **regenerates every option ID and silently clears every card's value** — snapshot `item-list` first, re-apply after, then re-wire the board's built-in workflows (Item closed → Done etc.) in the UI.
+- `gh project item-list` defaults to 30 items and silently truncates — always `--limit 100`.
+- The Actions `GITHUB_TOKEN` cannot touch Projects v2; board mutations happen from local sessions via `gh` (token needs the `project` scope).
+- Markdown edits during board reconciliation go through a temporary worktree + PR, never the launch working tree (a parallel session's `commit -a` can sweep dirty files).
+
+## Related documents
+
+- `AGENTS.md` — the agent-facing conventions (board mechanics + IDs, PR flow, review fallback); `CLAUDE.md` imports it. Terse on purpose; this document is its rationale.
+- `IMPLEMENTATION-PLAN.md` — source of truth for *what to build and why*; the board never replaces it.
+- `HUMAN-REVIEW-QUEUE.md` — home of review packets and full gate writeups; every open item there has a card.
+- `process/next.md` / `process/board-setup.md` — the canonical procedures behind the per-tool entry points.

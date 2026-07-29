@@ -73,6 +73,14 @@ $ copier copy --trust Templates/mlops_app path/to/destination \
 ~~~
 Note that the command will create the project inside the destination directory, not with the name of the destination directory.
 
+### Human+agent coordination template (proposal)
+
+`coordination/` stamps the human+agent project-board pattern into any project (new or existing): a shared GitHub Project board driven by both developers' coding agents (Claude Code, OpenCode, Codex, …) and humans, with cross-tool conventions in `AGENTS.md`, tool-neutral procedures in `process/`, and per-tool command wrappers. Apply it alongside any app template:
+~~~
+$ copier copy --trust Templates/coordination path/to/destination
+~~~
+then have a coding agent run the `board-setup` procedure to create and seed the board. See `coordination/README.md` for the pattern, adoption status, and migration checklist.
+
 ### Template Update Propagation
 This repository now renders explicit Copier answer files so generated projects can be updated later:
 

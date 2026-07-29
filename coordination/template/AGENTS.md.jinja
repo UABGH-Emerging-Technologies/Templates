@@ -1,0 +1,41 @@
+# Agent Instructions — {{ project_name }}
+
+Use this file as the entry point for project-level coding rules and coordination conventions. It is the cross-tool conventions file (Codex/OpenCode/etc. read it natively; `CLAUDE.md` imports it for Claude Code). Tool-specific passages are labeled; everything unlabeled applies to every agent.
+
+## Rule Review Requirement
+
+Before implementing changes, review all markdown rule files under `.agents/rules/` (if present in this repo):
+
+1. `.agents/rules/coding_standard.md`
+2. `.agents/rules/documentation_style.md`
+3. `.agents/rules/formatting.md`
+4. `.agents/rules/naming_conventions.md`
+5. `.agents/rules/security_guidelines.md`
+6. `.agents/rules/restricted_files.md`
+7. `.agents/rules/llm_utils_guide.md`
+
+Operational policy: follow those rules as authoritative; prefer reuse from `llm_utils/aiweb_common` before adding new utilities; never expose PHI, credentials, keys, or other secrets in logs, code, docs, or commits.
+
+## Project board (human+agent kanban)
+
+**Org project #<BOARD_NUMBER> "{{ project_name }}"** (https://github.com/orgs/{{ github_owner }}/projects/<BOARD_NUMBER>) is the standing human-facing coordination surface. Cards carry **coordination state only** — title, Status, Responsible, assignee, and a link to the PR / notes file / HUMAN-REVIEW-QUEUE entry; knowledge stays in the md files. Card grain = attention-transfer events (human gates, PR-sized agent work) — never agent-internal micro-tasks. Repo labels: `human-review`, `agent-work`, `stakeholder` (decision belongs to a non-GitHub stakeholder; delivered by relay — the assignee shows them the packet and records the decision as comment-with-attribution + close). Rationale: `PROCESS.md`.
+
+- **Tool-neutral procedures live in `process/`** (`next.md`, `board-setup.md`); per-tool entry points are thin wrappers: `.claude/skills/<name>/SKILL.md` (Claude Code), `.opencode/command/<name>.md` (OpenCode), `.codex/skills/<name>/SKILL.md` (Codex). Fallback for any tool without discovery: when the user says "next" (and only then), follow `process/next.md` directly.
+- **Columns (Status):** Unshaped → Todo → Agent working → Awaiting code review (a PR/diff exists and awaits review) → Awaiting human action (decision, sign-off, or real-world action — no diff) → Done. Keep Status truthful as you work. **Renaming/adding options via `updateProjectV2Field` regenerates ALL option IDs and silently clears every item's Status** — snapshot `item-list` first, re-apply after, and re-wire the board's built-in workflows in the UI.
+- **Unshaped column = the fluid project plan**: everything we believe we'll do, as **draft items** (cheap one-liners: source + gate), NOT issues. **Shaping = converting draft → real issue** with a self-contained body, labels, assignee, Responsible, then Status → Todo. There is deliberately **no Blocked column**: blocked-on-a-human is Awaiting human action; blocked-on-other-work stays Unshaped with its gate named.
+- **Card bodies are self-contained:** the human action, and the agent work it unblocks, must be executable without the originating conversation — exact ask, where to look, what proceeds when cleared. If a card needs the full prior chat to make sense, it isn't ready to be a card.
+- **Every card gets a GitHub assignee (a real account = the accountable human); assigning the wrong human beats assigning no one.** The `Responsible` single-select says who actually acts: AI agent (the coding agent, any tool) / one option per developer / per stakeholder / Copilot (AI reviewer).
+- **Multi-developer rule: an agent *starts work* only on cards assigned to its own operator.** Board bookkeeping and cleared-gate processing are **global and claim-guarded** (lane-scoping those would make follow-on work wait for a specific human to open a session); claiming = the visible marker (Agent working status; reassign-first when poaching an agent-work Todo into an empty lane; `Processed:` comments on gates). Details: `process/next.md`.
+- **Signals vs payload:** a card move is the signal; the substance (decision text, approval wording, feedback) goes in an issue comment. A closed `human-review` issue with no contrary comment = approved.
+- **Session pickup:** the `next` procedure (`process/next.md`, entry points above) — **run it only when the human invokes it** (the command, or "what's next?"); never orient against the board unprompted. Mid-session, watch a card you're blocked on with a background polling loop (Claude Code: the Monitor tool; other tools: a shell loop, or re-run next when you return). When no session is running, moves simply queue — the board is a mailbox, not a pager.
+- **Plumbing** (token needs `project` scope — `gh auth refresh -s project`): create the issue, then `gh project item-add <BOARD_NUMBER> --owner {{ github_owner }} --url <issue-url>`, then set fields with `gh project item-edit --project-id <PROJECT_ID> --id <item-id> --field-id <field-id> --single-select-option-id <option>`. Status field `<STATUS_FIELD_ID>`: Unshaped `<OPT_UNSHAPED>` · Todo `<OPT_TODO>` · Agent working `<OPT_AGENT_WORKING>` · Awaiting code review `<OPT_CODE_REVIEW>` · Awaiting human action `<OPT_HUMAN_ACTION>` · Done `<OPT_DONE>`. Responsible field `<RESPONSIBLE_FIELD_ID>`: AI agent `<OPT_AI_AGENT>` · … (board-setup fills this whole block after creating the board). Item IDs come from `item-list` — **pass `--limit 100`; the default 30 silently truncates**.
+
+## PR flow
+
+Commit as work completes on a feature branch, `gh pr create`, watch for the Copilot review of the current head (poll the reviews API from the local machine — never a billed-runner loop). Findings → fix and push; clean review of the head → merge. **Copilot-unavailable fallback: a quota-limit "unable to review" body is a non-review** — re-request once; if it still can't run, get a **context-blind fresh-agent review** (any capable tool/model, prompt essentially only "Review PR #n in this repo"; do NOT feed it the authoring conversation) — then address findings and merge. Never make any single reviewer a hard dependency.
+
+## Human review queue
+
+`HUMAN-REVIEW-QUEUE.md` holds the full writeups and packets for human gates (review materials, what each gates, effort). **Every open item there has a board card** (label `human-review`, Responsible = the human, Awaiting human action when materials are ready). Check items off as the humans complete them.
+
+<!-- Project-specific sections below: overview, commands, architecture, invariants. Fill in as the project takes shape. -->
