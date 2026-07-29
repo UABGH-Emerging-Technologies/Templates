@@ -7,7 +7,7 @@ metadata:
 
 # next
 
-Read `process/next.md` in this repository and follow it exactly. It is the canonical, tool-neutral procedure; this file is only the Codex entry point. Pass any user-supplied argument through as the work-selection filter in its step 4.
+Read `process/next.md` in this repository and follow it exactly. It is the canonical, tool-neutral procedure; this file is only the Codex entry point, and it marks an orchestrator session: delegate the orientation passes (steps 0–3) per that file's Delegation section (opencode running `process/kanban-check.md`). Pass any user-supplied argument through as the work-selection filter in its step 4.
 
 In this repository's managed Codex sandbox, run the procedure's required
 `git fetch` and every `gh` CLI command with escalated permissions on the first

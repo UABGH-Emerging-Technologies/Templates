@@ -51,7 +51,7 @@ Humans also deliver payload *without* closing — often correctly: **close is re
 ## The actors
 
 - **Developers** shape work, review diffs, and drain their judgment queue in batches — the "Awaiting" columns are the batching buffer.
-- **Agent sessions** (any coding agent — Claude Code, OpenCode, Codex, …; the protocol is tool-neutral, only entry points differ) file cards, move their own cards truthfully, and orient with the `next` procedure when — and only when — their human invokes it. Agents are not daemons: when no session runs, moves queue harmlessly.
+- **Agent sessions** (any coding agent — Claude Code, OpenCode, Codex, …; the protocol is tool-neutral, only entry points differ) file cards, move their own cards truthfully, and orient with the `next` procedure when — and only when — their human invokes it (its read-heavy passes delegate to a free local agent running the read-only `process/kanban-check.md`, which has no delegation policy and no writes, so it cannot loop or mutate; judgment and every board write stay with the orchestrating session). Agents are not daemons: when no session runs, moves queue harmlessly.
 - **Non-GitHub stakeholders** get `stakeholder`-labeled cards by **relay**: the assignee shows them the packet (email, meeting), then records the decision on the issue.
 - **Reviewers**: Copilot code review on every PR push, with the **context-blind fresh-agent fallback** when Copilot is unavailable — a fresh agent, any strong model, prompted essentially only "Review PR #n," deliberately denied the authoring conversation. Fresh eyes catch the author's own staleness; never make one reviewer a hard dependency.
 

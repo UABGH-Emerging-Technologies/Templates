@@ -23,6 +23,16 @@ The operator is `gh api user --jq .login`. Cards assigned to the operator are "y
 
 Status/assignee moves still happen — they're the human-visible signal on the board — but they never *arbitrate*: field edits carry no visible order or author. Losing this race costs one extra API call; skipping the verify step costs duplicated work (never corruption — code changes still serialize through git, and duplicate PRs collide loudly at review — but wasted agent-hours are real).
 
+## Delegation — run the orientation passes on a local model
+
+**Steps 0–3 should be delegated to opencode running the dedicated read-only procedure `process/kanban-check.md`** (owner 2026-07-29): `opencode run --auto --dir <repo> --title kanban-check "Follow process/kanban-check.md from origin/main as operator <gh login> and produce its report." < /dev/null`, backgrounded. The orientation cost is dominated by reading board/PR/HRQ state, not by judgment; measured 2026-07-29, opencode produced flawless orientation reports 6/6 dry runs at zero token cost, saving ~70–85k session tokens per orientation.
+
+**Why a separate procedure: the delegation loop is prevented by construction, not by self-knowledge.** kanban-check.md contains no delegation policy and no writes, so a delegate can neither recurse nor mutate no matter what it believes it is (2026-07-29 loop test: 1 of 3 local sessions misidentified its own runtime — introspective identity is unreliable). The entry points still declare each side as a belt: the Claude Code / Codex `next` wrappers mark orchestrator sessions (delegate steps 0–3); the OpenCode `next` wrapper marks a local-model session, which skips delegation and runs kanban-check's steps directly in-process — never spawn another `opencode run`.
+
+**What never delegates:** step 2 payload *interpretation* (classifying a human comment as decision / change request / ambiguous) and **every mutation** — claims, card moves, follow-on card creation, comments, closes. The orchestrating session reads the delegate's report, does the judgment, and performs the writes.
+
+**Trust but verify:** the orchestrator should re-run any step itself when the delegate's report is not self-consistent or conflicts with information the orchestrator already has (e.g., big divergence from the local md files, or from board state observed earlier in the session). The report is an input, not an authority. And the report is stale by construction: at claim time the orchestrator runs the full check → claim → verify loop from scratch — never treat a reported "unclaimed" as current.
+
 ## 0. Pull state
 
 - **Freshness check first**: `git fetch origin main -q && git status --short --branch` — if the launch tree is behind origin/main and clean, offer to `git pull --ff-only` (merged conventions/procedures are invisible until pulled; if a new command/skill arrived, tell the human a session restart may be needed for their tool to discover it). Dirty or on a feature branch → report, don't touch.
