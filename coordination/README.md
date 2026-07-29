@@ -26,8 +26,10 @@ All wrapper sets are emitted unconditionally: tooling is per developer, not per 
 **Greenfield**: apply this template (alongside `common`/`fastapi_app`/…), put planning artifacts in `plan/` and feasibility spikes in `explorations/`, then have any coding agent run the `board-setup` procedure — it ingests `plan/` + `explorations/`, drafts IMPLEMENTATION-PLAN.md for human review, creates and seeds the board, and fills the `<BOARD_NUMBER>`-style tokens the template leaves behind.
 
 ```
-copier copy gh:UABPeriopAI/Templates --exclude "*" --include "coordination/*" <dest>   # or your usual multi-template flow
+$ copier copy --trust Templates/coordination path/to/destination
 ```
+
+(House convention: a local clone of this repo, same as the app templates. **Apply coordination AFTER `common`** if you use both — both emit AGENTS.md; this one supersedes common's by including its rules-index block plus the board conventions.)
 
 **Existing repo without the template**: an agent runs `board-setup` directly (personal copy in `~/.claude/skills/` or `~/.codex/skills/`); the procedure fetches everything it needs from this repo.
 
@@ -41,6 +43,6 @@ copier copy gh:UABPeriopAI/Templates --exclude "*" --include "coordination/*" <d
 
 ## Open questions for review
 
-- **AGENTS.md composition**: `common/template/AGENTS.md.jinja` also emits AGENTS.md (the `.agents/rules/` index). This template's AGENTS.md includes that index block plus the board section, and is intended to be applied *after* common (overwrite). If reviewers prefer, the board section could instead land as `.agents/rules/coordination.md` referenced from common's AGENTS.md — smaller collision surface, one more indirection.
+- **AGENTS.md composition**: `common/template/AGENTS.md.jinja` also emits AGENTS.md (the `.agents/rules/` index). Current decision (documented in copier.yml + above): apply coordination *after* common; its AGENTS.md includes common's rules-index block plus the board section. Two known costs: the embedded rules-index can drift if common's list changes, and applying in the wrong order silently drops the board section (copier enforces no ordering). The collision-safe alternative — the board section as `.agents/rules/coordination.md` referenced from common's AGENTS.md — trades that for one more indirection. **Reviewers: pick one.**
 - **Org defaults**: the board lives under the project's GitHub owner; nothing here assumes UABGH vs UABPeriopAI.
 - Note (pre-existing, separate from this PR): the repo-root `CLAUDE.md` describes the NCVV project — it appears to have been copied from another repo and should be replaced or removed.
