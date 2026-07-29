@@ -32,7 +32,7 @@ Operational policy: follow those rules as authoritative; prefer reuse from `llm_
 
 ## PR flow
 
-Commit as work completes on a feature branch, `gh pr create`, watch for the Copilot review of the current head (poll the reviews API from the local machine — never a billed-runner loop). Findings → fix and push; clean review of the head → merge. **Copilot-unavailable fallback: a quota-limit "unable to review" body is a non-review** — re-request once; if it still can't run, get a **context-blind fresh-agent review** (any capable tool/model, prompt essentially only "Review PR #n in this repo"; do NOT feed it the authoring conversation) — then address findings and merge. Never make any single reviewer a hard dependency.
+Commit as work completes on a feature branch, `gh pr create`, watch for the Copilot review of the current head (poll the reviews API from the local machine — never a billed-runner loop). Findings → fix and push; clean review of the head → merge. **Copilot-unavailable fallback: a quota-limit "unable to review" body is a non-review** — do NOT re-request (quota won't refresh in seconds); go straight to a **context-blind fresh-agent review** (any capable tool/model, prompt essentially only "Review PR #n in this repo"; do NOT feed it the authoring conversation) — then address findings and merge. Never make any single reviewer a hard dependency.
 
 ## Human review queue
 
