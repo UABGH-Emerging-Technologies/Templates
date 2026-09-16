@@ -24,5 +24,8 @@ github_owner:
 
 # Board number and field/option IDs are deliberately NOT copier questions:
 # the board does not exist at stamp time. The stamped files carry literal
-# <BOARD_NUMBER>-style tokens that the board-setup procedure fills after it
-# creates the board.
+# <BOARD_NUMBER>, <BOARD_OWNER>, <REPO_SLUG>, <PROJECT_ID>, <STATUS_FIELD_ID>
+# and <OPT_*> tokens that the board-setup procedure fills after it creates the
+# board. process/kanban_check.sh refuses to run while any of its three remain,
+# because a half-substituted orientation script reports some other project's
+# board and a wrong-data run looks exactly like a good one.
