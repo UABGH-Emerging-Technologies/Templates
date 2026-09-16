@@ -6,7 +6,7 @@ description: Bootstrap a new project's human+agent coordination in the current r
 Follow the canonical, tool-neutral procedure in `process/board-setup.md`. If that file exists in the current repository, read and follow it. If it does not (normal when bootstrapping a brand-new project repo), fetch the canonical copy:
 
 ```
-gh api repos/UABPeriopAI/Templates/contents/coordination/template/process/board-setup.md --jq .content | base64 -d
+gh api repos/UABGH-Emerging-Technologies/Templates/contents/coordination/template/process/board-setup.md --jq .content | base64 -d
 ```
 
 This file is only the Claude Code entry point.

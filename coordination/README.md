@@ -68,12 +68,12 @@ The first draft of this template mirrored the pilot as of 2026-07-29. Everything
 
 ## Migration checklist (runs when this PR merges — not before)
 
-1. Flip the canonical-fetch URLs in `lead-infinitely` (`process/board-setup.md`, the board-setup wrappers) from `UABGH-Emerging-Technologies/lead-infinitely` to `UABPeriopAI/Templates` paths, and update its PROCESS.md canonical-home note.
+1. Flip the canonical-fetch URLs in `lead-infinitely` (`process/board-setup.md`, the board-setup wrappers) from `UABGH-Emerging-Technologies/lead-infinitely` to `UABGH-Emerging-Technologies/Templates` paths, and update its PROCESS.md canonical-home note.
 2. Update personal wrapper copies (`~/.claude/skills/board-setup/`, `~/.codex/skills/next/`, `~/.codex/prompts/next.md`) to fetch from this repo.
 3. Future pattern improvements land here first; lead-infinitely consumes them like any other project.
 
 ## Open questions for review
 
 - **AGENTS.md composition**: `common/template/AGENTS.md.jinja` also emits AGENTS.md (the `.agents/rules/` index). Current decision (documented in copier.yml + above): apply coordination *after* common; its AGENTS.md includes common's rules-index block plus the board section. Two known costs: the embedded rules-index can drift if common's list changes, and applying in the wrong order silently drops the board section (copier enforces no ordering). The collision-safe alternative — the board section as `.agents/rules/coordination.md` referenced from common's AGENTS.md — trades that for one more indirection. **Reviewers: pick one.**
-- **Org defaults**: the board lives under the project's GitHub owner; nothing here assumes UABGH vs UABPeriopAI.
+- **Org defaults**: the board lives under the project's GitHub owner, asked as the `github_owner` copier question. That is separate from the canonical-fetch URLs, which name where *this* repo actually lives (`UABGH-Emerging-Technologies/Templates`). The `github_owner` **default** is still `UABPeriopAI`, matching the sibling app templates — deliberately left alone here, since which org new projects belong to is a team call rather than a fact about this repo. **Reviewers: confirm or change it repo-wide**, not just in `coordination/`.
 - Note (pre-existing, separate from this PR): the repo-root `CLAUDE.md` describes the NCVV project — it appears to have been copied from another repo and should be replaced or removed.

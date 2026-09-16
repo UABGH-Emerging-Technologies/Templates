@@ -2,10 +2,10 @@
 
 This is the canonical procedure; per-tool entry points are thin wrappers pointing here. It runs in any coding agent that can run `gh` and `git`, inside the new project's repository. It sets up coordination for **mixed-tool teams** (Claude Code, OpenCode, Codex, …) — tooling is per developer, so every artifact below is emitted unconditionally.
 
-The pattern was developed on `UABGH-Emerging-Technologies/lead-infinitely` and its canonical home is the `coordination/` template in `UABPeriopAI/Templates` (`PROCESS.md` is the rationale; read it if in doubt). The premise: the board holds coordination state, md files hold knowledge; cards are attention-transfer events; every column answers "who acts next."
+The pattern was developed on `UABGH-Emerging-Technologies/lead-infinitely` and its canonical home is the `coordination/` template in `UABGH-Emerging-Technologies/Templates` (`PROCESS.md` is the rationale; read it if in doubt). The premise: the board holds coordination state, md files hold knowledge; cards are attention-transfer events; every column answers "who acts next."
 
 **Canonical assets live in the templates repo** — fetch them, don't reinvent:
-`gh api repos/UABPeriopAI/Templates/contents/coordination/template/<path> --jq .content | base64 -d` for `PROCESS.md.jinja` (render its `{{ project_name }}`-style variables as you adapt it), `process/next.md`, `process/kanban-check.md`, `process/kanban_check.sh` (all three carry `<BOARD_NUMBER>`-style tokens to fill in step 5), and this file (`process/board-setup.md`). If the repo was stamped with the `coordination` Copier template, these files already exist locally — fill the tokens instead of fetching.
+`gh api repos/UABGH-Emerging-Technologies/Templates/contents/coordination/template/<path> --jq .content | base64 -d` for `PROCESS.md.jinja` (render its `{{ project_name }}`-style variables as you adapt it), `process/next.md`, `process/kanban-check.md`, `process/kanban_check.sh` (all three carry `<BOARD_NUMBER>`-style tokens to fill in step 5), and this file (`process/board-setup.md`). If the repo was stamped with the `coordination` Copier template, these files already exist locally — fill the tokens instead of fetching.
 
 ## 0. Preconditions — verify ALL before doing anything; on any failure, ask the human immediately
 
