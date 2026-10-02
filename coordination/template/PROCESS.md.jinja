@@ -24,7 +24,7 @@ One shared board per project (not per developer — the whole point is that all 
 | **Todo** | Shaped and ready to execute — an agent (or human) could pick this up cold. | Work starts → Agent working (or the human just does it). |
 | **Agent working** | A coding agent is actively executing. Draft PRs live here too — a draft PR means the agent isn't done, not that review is owed. | PR opens for review → Awaiting code review. Abandoned or paused without a PR → swept back to Todo (see gotchas). |
 | **Awaiting code review** | A diff exists; the asked-for act is code review + merge. | Clean review → merge → Done. |
-| **Awaiting human action** | No diff. A decision, sign-off, or real-world act. | The human acts: comment carries the substance; **close = decision complete** (approve or reject). A change-request comment instead bounces the card to Agent working and back — see signals vs payload. |
+| **Awaiting human action** | No diff. A decision, sign-off, or real-world act. | The human acts: comment carries the substance; **close = decision complete** (approve or reject). A change-request comment instead re-queues the card to Todo, where it competes for selection like any other card; when picked it goes to Agent working and then back here — see signals vs payload. |
 | **Done** | Merged / approved / verified. Closed issues are ground truth, so this column is real, not decorative. | — |
 
 **There is deliberately no Blocked column.** "Blocked" answers *nobody acts next*, which is how columns become graveyards. Blocked-on-a-human **is** Awaiting human action. Blocked-on-other-work stays in Unshaped (or Todo) with its gate named in the body. Every column answers "who acts next" — that's the invariant.

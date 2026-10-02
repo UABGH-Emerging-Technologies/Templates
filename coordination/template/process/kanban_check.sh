@@ -97,7 +97,10 @@ if [ "$DO_FETCH" -eq 1 ]; then git fetch origin main -q; fi
 # first line by parameter expansion touches no pipe at all.
 BRANCH_STATUS="$(git status --short --branch)"
 BRANCH_LINE="${BRANCH_STATUS%%$'\n'*}"
-DIRTY="$(git status --porcelain | wc -l | tr -d ' ')"
+# Dirty count comes from the same call: every line after the `## branch` header is
+# one changed path.  A second `git status --porcelain` would step outside the
+# spec's git allowlist for no extra information.
+DIRTY="$(printf '%s\n' "$BRANCH_STATUS" | tail -n +2 | grep -c . || true)"
 WORKTREES="$(git worktree list | wc -l | tr -d ' ')"
 EXTRA_BRANCHES="$(git branch --format='%(refname:short)' | grep -vx 'main' || true)"
 
@@ -281,7 +284,12 @@ jq -r --slurpfile issues "$TMP/issues.json" --slurpfile prs "$TMP/prs.json" \
           ([$i.comments[] | select(.body | test($marker))] | last) end) as $lastmark
       | (if $lastmark == null then 1e9
          else ((now - ($lastmark.createdAt | fromdateiso8601)) / 3600) end) as $age
-      | ([$prs[0][] | select(.state == "OPEN") | select(((.body // "") + " " + (.headRefName // "")) | test("#\($n)\\b|issue-\($n)\\b"))] | length) as $openprs
+      # Same three linkage routes the orphan-PR check uses: body keyword, issue-<n>
+      # branch, and the linked-development sidebar (closingIssuesReferences). Missing
+      # the sidebar route would report a card with a perfectly good open PR as stale.
+      | ([$prs[0][] | select(.state == "OPEN")
+          | select(((((.body // "") + " " + (.headRefName // "")) | test("#\($n)\\b|issue-\($n)\\b"))
+                    or ([(.closingIssuesReferences // [])[] | .number] | index($n) != null)))] | length) as $openprs
       # Branch match follows the repo convention `issue-<n>[-slug]`. A bare substring
       # match (the number bounded by non-digits) also hits dates, ports and other
       # tracker ids, and it fails toward UNDER-reporting: a false hit suppresses a
@@ -340,12 +348,28 @@ done < "$TMP/hrq_items.tsv"
 
 # GATES -----------------------------------------------------------------------
 echo "GATES:"
-jq -r --arg marker "$MARKER" '
+# Only a FINALIZED acknowledgment clears a gate.  The claim protocol posts
+# `Processed: (in progress — …)` first and edits it into the real acknowledgment on
+# completion, and a lost race appends `(superseded)`; counting either as "processed"
+# would let a session that died mid-claim (or stopped to ask a question) hide the
+# human's decision from every future run.  An in-progress claim older than
+# STALE_HOURS is reported as abandoned so the next session can take it over.
+jq -r --argjson stale "$STALE_HOURS" '
+  def inprog: test("^Processed:\\s*\\(in progress");
+  def superseded: test("\\(superseded");
   [ .[] | select(.state == "CLOSED")
         | select([.labels[].name] | index("human-review"))
-        | select([.comments[].body | test("^Processed:")] | any | not)
-        | "  UNPROCESSED closed gate #\(.number) — \(.title)" ]
-  | if length == 0 then "  closed human-review gates missing Processed:: none" else .[] end
+        | . as $g
+        | [ .comments[] | select(.body | test("^Processed:")) ] as $pc
+        | select([ $pc[] | select((.body | inprog | not) and (.body | superseded | not)) ] | length == 0)
+        | ([ $pc[] | select((.body | inprog) and (.body | superseded | not)) ] | last) as $claim
+        | if $claim == null then "  UNPROCESSED closed gate #\($g.number) — \($g.title)"
+          else ((now - ($claim.createdAt | fromdateiso8601)) / 3600 | floor) as $h
+            | if $h > $stale
+              then "  ABANDONED claim on closed gate #\($g.number) — in-progress marker \($h)h old, never finalized → supersede it and process the gate — \($g.title)"
+              else "  closed gate #\($g.number) claimed \($h)h ago, in progress — skip — \($g.title)" end
+          end ]
+  | if length == 0 then "  closed human-review gates without a finalized Processed:: none" else .[] end
 ' "$TMP/issues.json"
 
 # Open Awaiting-human-action cards: anything after the last agent marker, verbatim.
