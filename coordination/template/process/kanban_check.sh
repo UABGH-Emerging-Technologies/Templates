@@ -36,8 +36,16 @@ set -euo pipefail
 REPO="<REPO_SLUG>"          # owner/repo, e.g. acme/widget
 OWNER="<BOARD_OWNER>"       # org or user that owns the project board
 PROJECT="<BOARD_NUMBER>"    # the project board number
+# Limits are sized from the pilot's measured growth (~92 issues and ~93 PRs a
+# month, 2026-09-28; there the PR list was the first to run thin). A fresh project
+# has years of headroom, but record a dated headroom check here whenever you
+# revisit them, so the next reader can see when they were last true. Outgrowing a
+# limit degrades rather than aborts: the issue/PR fetches refetch once at double
+# and, failing that, the report carries a LIMITS: line. BOARD_LIMIT covers the
+# FILTERED fetch (non-Done only), not the whole board; dropping --query is what
+# makes it too small.
 ISSUE_LIMIT=300
-PR_LIMIT=300
+PR_LIMIT=600
 BOARD_LIMIT=200
 STALE_HOURS=24
 IDLE_DAYS=7
@@ -103,19 +111,55 @@ gh project item-list "$PROJECT" --owner "$OWNER" --query "-status:Done" --limit 
 
 # gh issue list / pr list have no totalCount (asking for it errors), so the guard is
 # returned-vs-limit: equality is indistinguishable from "at least limit", so treat it
-# as truncation and fail toward suspicion.
-gh issue list -R "$REPO" --state all --limit "$ISSUE_LIMIT" \
-  --json number,title,state,labels,comments,updatedAt,body > "$TMP/issues.json"
-n=$(jq 'length' "$TMP/issues.json")
-[ "$n" -lt "$ISSUE_LIMIT" ] || { echo "ISSUES TRUNCATED at $ISSUE_LIMIT — raise ISSUE_LIMIT" >&2; exit 1; }
+# as possibly-truncated and fail toward suspicion.
+#
+# Self-healing rather than fatal (2026-09-28).  The old guard exited 1, which meant
+# an outgrown limit cost the session its ENTIRE orientation report — and at ~92 new
+# issues and ~93 new PRs a month, outgrowing one is a dated certainty, not a risk.
+# Refetching once at double the limit is cheap, almost always succeeds, and leaves
+# the number in this file as a starting point rather than a cliff.  If even the
+# doubled fetch comes back full the report still prints, with a LIMITS: line saying
+# which list may be short — a short list the reader knows about is recoverable; no
+# report at all is not.
+#
+# The fallback is deliberately ONE retry, not a loop to exhaustion: a runaway fetch
+# against a rate-limited API is its own failure, and a list that outgrows double the
+# configured limit is a signal the constant genuinely needs editing.
+LIMIT_WARNINGS=""
+
+fetch_guarded() {  # <label> <var-name> <outfile> <fetch-fn>
+  local label="$1" limit="$2" out="$3" fn="$4" n
+  "$fn" "$limit" > "$out"
+  n=$(jq 'length' "$out")
+  if [ "$n" -lt "$limit" ]; then
+    return 0
+  fi
+  local doubled=$((limit * 2))
+  echo "note: $label returned $n of $limit — refetching at $doubled" >&2
+  "$fn" "$doubled" > "$out"
+  n=$(jq 'length' "$out")
+  if [ "$n" -lt "$doubled" ]; then
+    return 0
+  fi
+  LIMIT_WARNINGS="${LIMIT_WARNINGS}  ${label} may be TRUNCATED: $n returned at limit $doubled — raise the constant in kanban_check.sh
+"
+}
+
+fetch_issues() {
+  gh issue list -R "$REPO" --state all --limit "$1" \
+    --json number,title,state,labels,comments,updatedAt,body
+}
 
 # closingIssuesReferences IS the "linked development" section the spec names: it
 # covers PRs linked through the sidebar as well as by closing keyword, so a PR
 # linked only in the UI is no longer reported as an untracked orphan.
-gh pr list -R "$REPO" --state all --limit "$PR_LIMIT" \
-  --json number,title,state,isDraft,url,body,headRefName,mergedAt,closingIssuesReferences > "$TMP/prs.json"
-n=$(jq 'length' "$TMP/prs.json")
-[ "$n" -lt "$PR_LIMIT" ] || { echo "PRS TRUNCATED at $PR_LIMIT — raise PR_LIMIT" >&2; exit 1; }
+fetch_prs() {
+  gh pr list -R "$REPO" --state all --limit "$1" \
+    --json number,title,state,isDraft,url,body,headRefName,mergedAt,closingIssuesReferences
+}
+
+fetch_guarded "issues" "$ISSUE_LIMIT" "$TMP/issues.json" fetch_issues
+fetch_guarded "prs" "$PR_LIMIT" "$TMP/prs.json" fetch_prs
 
 git ls-remote --heads origin | awk '{print $2}' | sed 's#refs/heads/##' > "$TMP/remote_branches.txt"
 
@@ -171,6 +215,13 @@ printf 'STEP0: %s | dirty=%s | worktrees=%s | operator=%s\n' \
   "$BRANCH_LINE" "$DIRTY" "$WORKTREES" "$OPERATOR"
 if [ -n "$EXTRA_BRANCHES" ]; then
   printf '  local branches beyond main: %s\n' "$(echo "$EXTRA_BRANCHES" | tr '\n' ' ')"
+fi
+# Only ever printed when a doubled refetch still came back full, so silence here
+# means every list is complete.  It sits inside the report rather than on stderr
+# because the report is what the reader reads: a caveat that scrolled past in a
+# log is a caveat nobody applied.
+if [ -n "$LIMIT_WARNINGS" ]; then
+  printf 'LIMITS:\n%s' "$LIMIT_WARNINGS"
 fi
 if [ "$WORKTREES" -gt 1 ]; then
   git worktree list | tail -n +2 | sed 's/^/  extra worktree: /'

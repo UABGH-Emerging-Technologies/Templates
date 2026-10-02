@@ -39,7 +39,7 @@ $ copier copy --trust Templates/coordination path/to/destination
 
 **Day-to-day**: developers type `/next` (or "what's next?") in their tool of choice — user-triggered only, never proactive. The procedure syncs cards to ground truth, processes cleared human gates (comment = payload, close = signal), lists the human's queue, picks up the next Todo card in the operator's lane, **and works it through to a PR** — the orientation report is the preamble, not the deliverable.
 
-## Second sync: what ~7 weeks of pilot use changed (2026-07-31 → 2026-09-15)
+## Second sync: what ~9 weeks of pilot use changed (2026-07-31 → 2026-09-28)
 
 The first draft of this template mirrored the pilot as of 2026-07-29. Everything below is a lesson the pilot paid for after that date, now folded in. Two of them **retire** a mechanism this template previously shipped, which is the main reason to re-read rather than skim the diff.
 
@@ -63,6 +63,12 @@ The first draft of this template mirrored the pilot as of 2026-07-29. Everything
 - **Reviewable artifacts are committed and linked by permalink**; "regenerate it with this script" strands the reviewer on one machine and makes the approved thing unrecoverable.
 - **Consolidated gate cards** (2026-08-10), with the correction that followed a week later: consolidation applies to **gates, not work**. The first wording read as "stop making cards about this topic" and left the next session hesitant to card real build work. Test: a human *decides* it → consolidate; an agent *does* it → card it.
 - **A change request re-queues a gate to Todo** rather than auto-starting it — the re-armed gate competes for selection like any other card.
+
+**Third sync (2026-09-28 pilot changes)**
+
+- **Orientation fetch guards recover instead of aborting.** The issue/PR tripwires in `kanban_check.sh` used to `exit 1` when a list came back full — failing toward suspicion, correctly, but spending the session's *entire* orientation report on a stale constant that is certain to go stale (the pilot grows ~92 issues and ~93 PRs a month). They now refetch once at double the limit, and only if that is also full does the report carry a `LIMITS:` line naming the list that may be short. One retry, never a loop.
+- **The documented board fetch has headroom; ad-hoc lookups are the real trap.** A "board outgrew its limit" report on the pilot turned out to be an unfiltered one-off query typed mid-session (241 items) — the documented `--query`-filtered fetch returned 75 of 200. The fix was recording the measured margin and the ad-hoc case (use `gh issue view <n>`, which cannot truncate), not raising a number.
+- **`kanban-check.md` now documents the script's superset issue fetch** (`--state all`, unlabelled, plus bodies) and why the narrow closed-`human-review` query cannot serve it. That divergence between script and spec was real and undocumented — an auditor comparing them would have read it as drift.
 
 **A process lesson about this document set itself**: one pilot PR corrected the truncation advice in four files and missed a fifth; a second fixed the fifth as a drive-by; a third reverted the second wholesale, restoring the bad wording. A revert is scoped to a PR, not to a topic, so drive-by fixes die with it. Land corrections on their own card.
 

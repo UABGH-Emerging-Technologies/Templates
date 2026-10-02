@@ -59,8 +59,10 @@ It also retires a hazard rather than managing it. The delegation split existed s
 
   ```
   gh issue list -R <REPO_SLUG> --label human-review --state closed \
-    --limit 100 --json number,title,comments
+    --json number,title,comments
   ```
+
+  (`process/kanban_check.sh` fetches a deliberate superset of this — `--state all`, unlabelled, plus bodies — because the QUEUE ask lines, HRQ link resolution and the stale-claim sweep all need issues this narrow query excludes. See `kanban-check.md` step 1.)
 
   **This one cannot use the `totalCount` guard** — `gh issue list` has no such field (asking for it errors). Use the returned-vs-limit tripwire instead: if the number of issues returned equals the limit, treat it as truncated and raise the limit, because you cannot distinguish "exactly 100" from "at least 100".
 
