@@ -179,6 +179,7 @@ gh project field-list "$PROJECT" --owner "$OWNER" --format json 2>/dev/null \
   | jq -r '(.fields[] | select(.name == "Status")) // empty' > "$TMP/status_field.json" || true
 STATUS_FIELD_ID="$(jq -r '.id // empty' "$TMP/status_field.json" 2>/dev/null)"
 DONE_OPTION_ID="$(jq -r '(.options[]? | select(.name == "Done") | .id) // empty' "$TMP/status_field.json" 2>/dev/null)"
+REVIEW_OPTION_ID="$(jq -r '(.options[]? | select(.name == "Awaiting code review") | .id) // empty' "$TMP/status_field.json" 2>/dev/null)"
 git show origin/main:HUMAN-REVIEW-QUEUE.md > "$TMP/hrq.md" 2>/dev/null || : > "$TMP/hrq.md"
 
 # ------------------------------------------------------------------- HRQ parse
@@ -233,13 +234,20 @@ fi
 # SYNC ------------------------------------------------------------------------
 echo "SYNC:"
 jq -r --slurpfile issues "$TMP/issues.json" --slurpfile prs "$TMP/prs.json" \
-      --arg pid "$PROJECT_ID" --arg fid "$STATUS_FIELD_ID" --arg done "$DONE_OPTION_ID" '
+      --arg pid "$PROJECT_ID" --arg fid "$STATUS_FIELD_ID" --arg done "$DONE_OPTION_ID" --arg review "$REVIEW_OPTION_ID" '
   # The exact command, not just the intent — but only where the action is
   # determinate.  "PR closed unmerged" needs a human to say what was meant, so it
   # stays intent-only rather than shipping a command that might be the wrong one.
   def setdone($item):
     if ($pid == "" or $fid == "" or $done == "") then ""
     else "\n        gh project item-edit --project-id \($pid) --id \($item) --field-id \($fid) --single-select-option-id \($done)"
+    end;
+  # A draft PR is the agent end state, so a card in Agent working whose PR exists
+  # belongs in Awaiting code review — this also repairs a session that posted the
+  # PR and died before moving the card.
+  def setreview($item):
+    if ($pid == "" or $fid == "" or $review == "") then ""
+    else "\n        gh project item-edit --project-id \($pid) --id \($item) --field-id \($fid) --single-select-option-id \($review)"
     end;
   ($issues[0] | map({key:(.number|tostring), value:.}) | from_entries) as $I
   | ($prs[0]   | map({key:(.number|tostring), value:.}) | from_entries) as $P
@@ -251,6 +259,7 @@ jq -r --slurpfile issues "$TMP/issues.json" --slurpfile prs "$TMP/prs.json" \
       | ($I[$n|tostring]) as $i | ($P[$n|tostring]) as $p
       | if   ($i != null and $i.state == "CLOSED") then "  #\($n) issue CLOSED but Status=\($it.status) → set Done" + setdone($it.id)
         elif ($p != null and $p.mergedAt != null)  then "  #\($n) PR MERGED but Status=\($it.status) → set Done" + setdone($it.id)
+        elif ($it.status == "Agent working" and $p != null and $p.state == "OPEN") then "  #\($n) PR OPEN but Status=Agent working → set Awaiting code review (a draft PR is the agent end state)" + setreview($it.id)
         elif ($p != null and $p.state == "CLOSED") then "  #\($n) PR CLOSED unmerged but Status=\($it.status) → confirm intent (no command: the right move depends on why it closed)"
         else empty end ]
   | if length == 0 then "  closed/merged vs Status: consistent" else .[] end
@@ -260,7 +269,7 @@ jq -r --slurpfile board "$TMP/board.json" '
   ([$board[0].items[] | select(.content.number != null) | .content.number]) as $carded
   | ([$board[0].items[] | select(.status == "Awaiting code review") | .content.number]) as $inreview
   | [ .[]
-      | select(.state == "OPEN" and (.isDraft | not))
+      | select(.state == "OPEN")
       | . as $pr
       | ((.body // "") | [scan("(?i)(?:closes|fixes|resolves)\\s+#([0-9]+)")] | flatten | map(tonumber)) as $closes
       | ((.headRefName // "") | [scan("issue-([0-9]+)")] | flatten | map(tonumber)) as $branchref
@@ -269,7 +278,7 @@ jq -r --slurpfile board "$TMP/board.json" '
       | select(($carded | index($pr.number)) == null)
       | select([ $linked[] | select(($inreview | index(.)) != null) ] | length == 0)
       | "  untracked open PR #\($pr.number) — \($pr.title) (links: \(if ($linked|length)==0 then "none found" else ($linked|tostring) end))" ]
-  | if length == 0 then "  open non-draft PRs: all tracked" else .[] end
+  | if length == 0 then "  open PRs (draft or ready): all tracked" else .[] end
 ' "$TMP/prs.json"
 
 # Stale work claims: Agent working, newest agent-marker older than STALE_HOURS,
