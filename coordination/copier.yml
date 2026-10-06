@@ -1,0 +1,35 @@
+_min_copier_version: "9.0.0"
+_subdirectory: template
+_templates_suffix: ".jinja"
+_answers_file: .copier-answers.coordination.yml
+
+# NOTE: if combining with the common template, apply coordination AFTER
+# common — both emit AGENTS.md, and this one includes common's rules-index
+# block plus the board conventions. Applying common second would silently
+# drop the board section.
+
+# project_name is deliberately ASKED, unlike common's `when: false` copy of it:
+# this template is applied on its own to existing repos, where there is no app
+# template upstream to supply the answer.  Pass `-d project_name=…` to skip the
+# prompt when composing it with an app template.
+project_name:
+  type: str
+  help: Your project name
+  default: "{{ project_name | default('MyProject') }}"
+
+# There is no GitHub-owner question: the board's owner and URL are filled by
+# board-setup from what `gh project create` returns (<BOARD_OWNER>, <BOARD_URL>),
+# because a stamped `/orgs/<owner>/…` link is wrong for user-owned boards and an
+# owner default would go stale when repos move between orgs.
+
+# Stakeholder names are deliberately NOT a copier question: the board-setup
+# procedure asks for them interactively when it creates the Responsible field
+# (they can't be rendered into anything useful at stamp time).
+
+# Board number and field/option IDs are deliberately NOT copier questions:
+# the board does not exist at stamp time. The stamped files carry literal
+# <BOARD_NUMBER>, <BOARD_URL>, <BOARD_OWNER>, <REPO_SLUG>, <PROJECT_ID>, <STATUS_FIELD_ID>
+# and <OPT_*> tokens that the board-setup procedure fills after it creates the
+# board. process/kanban_check.sh refuses to run while any of its three remain,
+# because a half-substituted orientation script reports some other project's
+# board and a wrong-data run looks exactly like a good one.
