@@ -1,0 +1,69 @@
+@startuml next-use-case
+' next — Use Case diagram
+' Source procedure: coordination/template/process/next.md
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+
+actor "Operator\n(human)" as Operator
+actor "Coding Agent\n(orchestrator session)" as Agent
+actor "kanban_check.sh\n(read-only report)" as Script
+actor "GitHub API\n(board, issues, PRs)" as GH
+actor "Fresh-eyes Reviewer\n(context-blind subagent)" as Reviewer
+actor "Code Reviewer\n(human)" as CodeReviewer
+
+rectangle "next — board-driven session orientation" {
+
+  usecase "Run orientation passes" as UC1
+  usecase "Sync board to ground truth" as UC2
+  usecase "Process cleared gates" as UC3
+  usecase "Re-arm a gate on change request" as UC4
+  usecase "Surface human queue" as UC5
+  usecase "Pick and claim a Todo card" as UC6
+  usecase "Poach from an empty lane" as UC7
+  usecase "Sweep stale work claims" as UC8
+  usecase "Plan with the human\ngate 1 (step 5)" as UC9
+  usecase "Do the work" as UC10
+  usecase "Run fresh-eyes review" as UC11
+  usecase "Produce testing report or manual test" as UC12
+  usecase "Open a draft PR" as UC13
+  usecase "Record a blocker" as UC14
+  usecase "Hand off for human acceptance\ngate 2 (step 7)" as UC16
+  usecase "Promote draft and merge\n(post-PR, human)" as UC15
+}
+
+Agent --> UC1
+Agent --> UC2
+Agent --> UC3
+Agent --> UC4
+Agent --> UC5
+Agent --> UC6
+Agent --> UC7
+Agent --> UC8
+Agent --> UC9
+Agent --> UC10
+Agent --> UC13
+Agent --> UC14
+Agent --> UC16
+
+Reviewer --> UC11
+Operator --> UC9
+Operator --> UC16
+Operator --> UC15
+CodeReviewer --> UC15
+
+UC1 --> Script
+UC1 --> GH
+UC2 --> GH
+UC3 --> GH
+UC6 --> GH
+UC8 --> GH
+UC13 --> GH
+
+UC1 .> UC2 : <<include>>
+UC1 .> UC3 : <<include>>
+UC1 .> UC5 : <<include>>
+UC16 .> UC11 : <<include>>
+UC16 .> UC12 : <<include>>
+UC16 .> UC13 : <<include>>
+@enduml

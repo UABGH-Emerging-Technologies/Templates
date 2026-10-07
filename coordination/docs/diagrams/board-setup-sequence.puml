@@ -1,0 +1,66 @@
+@startuml board-setup-sequence
+' board-setup — Sequence diagram
+' Source procedure: coordination/template/process/board-setup.md
+title board-setup — board creation and seeding
+autonumber
+
+actor "Repository Owner\n(human)" as Owner
+participant "Coding Agent" as Agent
+participant "gh CLI" as GH
+participant "git" as Git
+participant "GitHub API\n(Projects v2)" as API
+participant "Templates Repo\n(canonical assets)" as Templates
+
+Owner -> Agent : run board-setup
+activate Agent
+
+group Step 0 — preconditions
+  Agent -> GH : gh repo view, gh auth status
+  GH -> Agent : owner, name, scopes
+  Agent -> API : gh project list (duplicate check)
+  API -> Agent : projects
+  alt a precondition fails
+    Agent -> Owner : ask immediately and stop
+  else all pass
+    Agent -> Owner : up-front questions in one batch
+    Owner -> Agent : board title, stakeholders, devs, commit flow
+  end
+end
+
+group Step 1-2 — ingest and draft
+  Agent -> Templates : fetch canonical assets
+  Templates -> Agent : PROCESS.md (rendered)
+  Agent -> Agent : ingest plan/ and explorations/
+  Agent -> Owner : present drafts — CHECKPOINT
+  Owner -> Agent : approve or edit
+end
+
+group Step 3 — create and configure the board
+  Agent -> API : gh project create
+  API -> Agent : number, ID, url
+  Agent -> API : field-list (Status field ID)
+  API -> Agent : field and option IDs
+  Agent -> API : updateProjectV2Field\nreplace Status options BEFORE any item
+  API -> Agent : new option IDs
+  Agent -> API : create Responsible field and repo labels
+  Agent -> Agent : record number, ID, url,\nowner, every field and option ID
+end
+
+group Step 4 — seed and verify
+  Agent -> API : seed draft items, issues and gates
+  Agent -> API : item-list for count verification
+  API -> Agent : items and totalCount
+  Agent -> Agent : guard against silent truncation
+end
+
+group Step 5 — install conventions
+  Agent -> Templates : fetch next.md, kanban-check.md,\nkanban_check.sh, board-setup.md
+  Templates -> Agent : canonical process files
+  Agent -> Agent : write AGENTS.md, CLAUDE.md,\nprocess/ files and 6 wrappers
+  Agent -> Git : git add and commit (PR or direct)
+end
+
+Agent -> Owner : hand off checklist\n(board view, workflows, access, gh auth refresh)
+deactivate Agent
+
+@enduml

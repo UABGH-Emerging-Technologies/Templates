@@ -1,0 +1,49 @@
+@startuml kanban-check-use-case
+' kanban-check — Use Case diagram (associated process)
+' Sources: process/kanban-check.md and process/kanban_check.sh
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+
+actor "Invoker\n(agent session or human)" as Invoker
+actor "GitHub API\n(board, issues, PRs)" as GH
+actor "git remote" as Git
+
+rectangle "kanban-check — read-only orientation report" {
+
+  usecase "Produce orientation report" as UC1
+  usecase "Report freshness and local hygiene" as UC2
+  usecase "Report sync findings" as UC3
+  usecase "Report gate payloads verbatim" as UC4
+  usecase "Report the human queue" as UC5
+  usecase "Report Todo candidates by issue number" as UC6
+  usecase "Report LIMITS when a refetch stays full" as UC7
+  usecase "Enforce read-only (no mutation verbs)" as UC8
+  usecase "Enforce non-recursive execution" as UC9
+  usecase "Emit report between fixed markers" as UC10
+}
+
+Invoker --> UC1
+Invoker --> UC8
+Invoker --> UC9
+
+UC1 --> GH
+UC1 --> Git
+UC2 --> Git
+UC3 --> GH
+UC3 --> Git
+UC4 --> GH
+UC5 --> GH
+UC5 --> Git
+UC6 --> GH
+
+UC1 .> UC2 : <<include>>
+UC1 .> UC3 : <<include>>
+UC1 .> UC4 : <<include>>
+UC1 .> UC5 : <<include>>
+UC1 .> UC6 : <<include>>
+UC1 .> UC7 : <<include>>
+UC1 .> UC10 : <<include>>
+UC8 .> UC1 : <<extend>>
+UC9 .> UC1 : <<extend>>
+@enduml
