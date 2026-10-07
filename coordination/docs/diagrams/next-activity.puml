@@ -1,0 +1,77 @@
+@startuml next-activity
+' next — Activity diagram
+' Source procedure: coordination/template/process/next.md
+title next — board-driven session orientation
+skinparam ActivityBackgroundColor #FDFDFD
+
+start
+:Human invokes next\n(never proactive);
+
+:Step 0 — pull state\n(freshness, local hygiene, board fetch,\nissue and PR lists);
+
+:Run kanban_check.sh\n(steps 0-3 report, read-only);
+
+:Step 1 — sync pass (global)\n(match board to ground truth);
+
+if (Stale work claim older than 24h\nwith no PR and no branch?) then (yes)
+  :Verify nothing landed,\nsupersede claim, re-queue to Todo;
+else (no)
+endif
+
+:Step 2 — cleared-gate pass (global, claim-guarded);
+
+if (Closed gate with no finalized marker?) then (yes)
+  :Claim, read payload, do what it unblocks,\nfinalize Processed acknowledgment;
+else (no)
+endif
+
+if (Open gate with unacknowledged human comment?) then (yes)
+  if (Comment is an explicit decision?) then (yes)
+    :Process and close with attribution;
+  else (no)
+  endif
+  if (Comment is a change request?) then (yes)
+    :Supersede claim, re-queue to Todo\n(do not auto-start);
+  else (no)
+  endif
+  if (Comment is ambiguous?) then (yes)
+    :Surface to human, never guess;
+  else (no)
+  endif
+  if (Comment is a question?) then (yes)
+    :Answer in a reply comment;
+  else (no)
+  endif
+else (no)
+endif
+
+:Step 3 — human nudge\n(report, do not nag);
+
+:Step 4 — pick one work card\n(lowest Todo issue in lane, or poach;\na passed card number is the pick, other text filters);
+:Claim before work\n(comment Claiming with nonce, verify lowest ID);
+
+:Step 5 — plan with the human\n(read-only investigation, ask questions);
+:Present plan and wait for explicit approval;
+
+if (Plan approved?) then (no)
+  :Record blocker, return card to Todo;
+  stop
+else (yes)
+endif
+
+:Record approved plan on the card;
+:Step 6 — do the work\n(verify with tests / headless browser);
+
+:Step 7 — hand-off before the PR\n(fresh-eyes review results, testing report);
+
+if (User experience changed?) then (yes)
+  :Add a proposed manual test for the human;
+else (no)
+endif
+
+:Present to the human — wait for accept or defer;
+:Open a DRAFT PR and move card\nto Awaiting code review;
+
+:Human promotes to ready-for-review and merges;
+stop
+@enduml
