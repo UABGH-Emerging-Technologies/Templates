@@ -33,6 +33,16 @@
 #
 set -euo pipefail
 
+# Opt-in multi-repository report. The established single-repository path below
+# remains byte-for-byte unchanged for existing consumers.
+for arg in "$@"; do
+  case "$arg" in
+    --manifest|--manifest=*)
+      SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+      exec python3 "$SCRIPT_DIR/kanban_check_multi.py" "$@" ;;
+  esac
+done
+
 REPO="<REPO_SLUG>"          # owner/repo, e.g. acme/widget
 OWNER="<BOARD_OWNER>"       # org or user that owns the project board
 PROJECT="<BOARD_NUMBER>"    # the project board number

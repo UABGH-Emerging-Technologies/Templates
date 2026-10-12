@@ -1,5 +1,51 @@
 # kanban-check — read-only board orientation report (tool-neutral procedure)
 
+## Opt-in multi-repository orientation (PLAN-C1a)
+
+`process/kanban_check.sh --manifest plan/repositories.json` selects the
+repository-aware report. Invocations without `--manifest` keep the established
+single-repository implementation and report semantics. The manifest is a local
+JSON file with `schema_version: 1`, `project_owner`, `project_number`,
+`initiative_label`, and at least two `repositories`. Each repository has a
+unique `slug` (`owner/repo`), `local_path` relative to the owning project
+checkout, and `integration_branch`. When the manifest is in `plan/`, the
+owning project checkout is that directory's parent; otherwise it is the
+manifest directory. Optional `review_queue_repository` selects the
+repository holding `HUMAN-REVIEW-QUEUE.md`; it defaults to the first repository.
+Other manifest keys are allowed but do not widen the report's scope. This
+contract is opt-in; the ai-desktop candidate manifest is not silently a stable
+public API. Invalid required fields stop before queries.
+
+The multi-repository report retains the outer `=== KANBAN-CHECK REPORT ===`
+markers and the `STEP0`, `SYNC`, `GATES`, `QUEUE`, and `CANDIDATES` sections. It
+adds `SOURCES`, which marks every board, checkout, repository issue/PR list,
+linked-development connection, review queue, and in-scope issue comment stream
+complete or `INCOMPLETE` with a reason. An
+incomplete report exits 1 and carries an overall incomplete line. No empty
+section in that case asserts that the work is done or a gate was approved.
+Every issue/PR reference is `owner/repo#number`; bare numbers never join
+records across repositories. Candidate ordering is by slug and issue number.
+
+The active board fetch is verified against `totalCount` and retried once at a
+higher limit. Repository issues, PRs, and relevant issue comments use paginated
+GitHub REST reads. Open PR linked-development connections use GraphQL cursor
+pagination. A later-page failure makes that source incomplete. Closed
+human-review gates are discovered through the initiative label even when their
+master-board card is Done or archived; an unrelated gate in the same repository
+is outside the report. Active board cards are in scope only for manifest-listed
+repositories. A board issue lacking the initiative label is a sync finding.
+An open PR is classified as initiative work only when it is on the master
+board or explicitly closes/uses the issue branch of an in-scope issue.
+
+Freshness uses each repository's own integration branch. A missing checkout or
+unavailable source is reported rather than interpreted as an empty board or
+queue. `--no-fetch`, `--operator LOGIN`, and `--comments brief|full` remain
+available in multi-repository mode. The procedure only reads remote state and
+local checkout state; optional fetch updates Git metadata but no tracked file,
+branch, issue, PR, or project field. It does not claim, reconcile, pick up, or
+authorize work. The master `/next` guard in an adopting repository stays in
+place until C1b and the separate adoption validation finish.
+
 Produces the orientation *report* for the `next` procedure without acting on anything. It is implemented by `process/kanban_check.sh`, which a `next` session runs directly; this file is that script's specification and the procedure to follow by hand if it cannot run. Either way it is directly useful to a human who wants a board snapshot with nothing touched.
 
 ## Run the script
