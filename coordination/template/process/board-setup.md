@@ -1,27 +1,30 @@
 # board-setup — instantiate the human+agent coordination pattern (tool-neutral procedure)
 
-This is the canonical procedure; per-tool entry points are thin wrappers pointing here. It runs in any coding agent that can run `gh` and `git`, inside the new project's repository. It sets up coordination for **mixed-tool teams** (Claude Code, OpenCode, Codex, …) — tooling is per developer, so every artifact below is emitted unconditionally.
+This is the canonical procedure; per-tool entry points are thin wrappers pointing here. It runs in any coding agent that can run `git` and the platform's transport, inside the new project's repository. It sets up coordination for **mixed-tool teams** (Claude Code, OpenCode, Codex, …) — tooling is per developer, so every artifact below is emitted unconditionally.
 
-The pattern was developed on `UABGH-Emerging-Technologies/lead-infinitely` and its canonical home is the `coordination/` template in `UABGH-Emerging-Technologies/Templates` (`PROCESS.md` is the rationale; read it if in doubt). The premise: the board holds coordination state, md files hold knowledge; cards are attention-transfer events; every column answers "who acts next."
+**Two platforms, one procedure.** The pattern runs on **GitHub** (a Project board + `gh`) and **Azure DevOps Server** (an Epic subtree + REST). This procedure is the same for both: it **detects the platform once** from the repo's origin, installs the matching `platforms/<p>/` bundle into `process/`, and writes `board.conf`. The platform is chosen **here, once** — never at run time. The rationale is `PROCESS.md`; the pattern's origin is the `coordination/` template in `UABGH-Emerging-Technologies/Templates`.
 
-**Canonical assets live in the templates repo** — fetch them, don't reinvent:
-`gh api repos/UABGH-Emerging-Technologies/Templates/contents/coordination/template/<path> --jq .content | base64 -d` for `PROCESS.md.jinja` (render its `{{ project_name }}`-style variables as you adapt it), `process/next.md`, `process/kanban-check.md`, `process/kanban_check.sh` (all three carry `<BOARD_NUMBER>`-style tokens to fill in step 5), and this file (`process/board-setup.md`). If the repo was stamped with the `coordination` Copier template, these files already exist locally — fill the tokens instead of fetching.
+The premise is unchanged: the board holds coordination state, md files hold knowledge; cards are attention-transfer events; every status answers "who acts next."
 
 ## 0. Preconditions — verify ALL before doing anything; on any failure, ask the human immediately
 
 Check, in order:
 
-1. **Repo**: `gh repo view --json owner,name,isPrivate` succeeds (we're in a git repo with a GitHub remote). Capture owner/name; note whether owner is an org or a user (affects `--owner` below).
+1. **Repo + remote**: we are in a git repo with a remote. Capture `git remote get-url origin` — its host decides the platform in step 3.
 2. **Inputs**: `plan/` exists and is non-empty. `explorations/` exists (empty or absent is tolerable — confirm with the human that there are genuinely no spikes).
-3. **Token**: `gh auth status` shows the `project` scope (fix: `gh auth refresh -s project`, which the human must do interactively).
-4. **No duplicate board**: `gh project list --owner <owner> --format json` — if a project title matches this repo/project, ask: reuse it or create a new one?
-5. **Existing conventions**: does the repo already have AGENTS.md / CLAUDE.md / IMPLEMENTATION-PLAN.md / branch protections (`gh api repos/<o>/<r>/rulesets` or protected main)? Never overwrite existing docs without asking.
+3. **Credentials** (per platform):
+   - **GitHub**: `gh auth status` shows the `project` scope (fix: `gh auth refresh -s project`, which the human must do interactively).
+   - **ADO**: `ADO_PAT` is set and reaches the collection (`GET {base}/_apis/connectionData` → 200), with scopes `vso.work_write`, `vso.code_write`, `vso.project`.
+4. **Board surface**:
+   - **GitHub**: no duplicate project — `gh project list --owner <owner>`; if a project matches, ask: reuse or create new?
+   - **ADO**: a **team + area path** for the coordination board, **and no existing coordination Epic in it**. **Creating a team or area path is a Project Collection Administrator act the API may not grant** — if the team/area is missing, stop and hand it to the human. For the Epic, query the area's Epics (`SELECT [System.Id] FROM WorkItems WHERE [System.WorkItemType] = 'Epic' AND [System.AreaPath] UNDER '<area path>'`); **if one matches, ask: reuse it or create a new one?** A second coordination Epic in the same area is a duplicate board — the same trap the GitHub check exists to catch.
+5. **Existing conventions**: does the repo already have AGENTS.md / CLAUDE.md / IMPLEMENTATION-PLAN.md / branch protections? Never overwrite existing docs without asking.
 
 Then ask the human up front, in one batch (plus anything the checks surfaced):
 - **Board title** (default: the repo/project name).
-- **Stakeholders without GitHub accounts** (names → Responsible options; their cards get the `stakeholder` label and relay delivery).
-- **Other developers** (GitHub logins → lanes). Do NOT ask which coding tools they use — tooling is per developer and all entry points are emitted regardless.
-- **Commit flow**: PR flow with review, or direct commits (if the repo has no protections yet, ask which to use; recommend PR flow).
+- **Stakeholders without accounts** (names → the `stakeholder` tag; their cards are delivered by relay).
+- **Other developers** (logins / display names → lanes). Do NOT ask which coding tools they use — tooling is per developer and all entry points are emitted regardless.
+- **Commit flow**: PR flow with review, or direct commits (recommend PR flow).
 
 Do not proceed past a failed assumption on your own judgment — the human said what they meant by `plan/` and `explorations/`; if the shape on disk doesn't match, that's their call, not yours.
 
@@ -37,49 +40,58 @@ Write drafts (do not seed anything yet):
 
 - **IMPLEMENTATION-PLAN.md** — the source of truth for module/milestone status, dependencies, and gates. Include: a decisions section (owner-decided, with provenance to the `plan/` file each came from), an open-questions section, and per-item gates ("needs X before actionable"). Spike outcomes from `explorations/` annotate the items they de-risk.
 - **HUMAN-REVIEW-QUEUE.md** — skeleton, pre-populated with any human gates the plan already implies (sign-offs, legal reads, approvals).
-- **PROCESS.md** — fetch the canonical (`coordination/template/PROCESS.md.jinja`) and render/adapt names/links (project title, repo, board URL).
+- **PROCESS.md** — adapt this repo's `PROCESS.md` (project title, repo, board link).
 
-**Checkpoint: present the drafts and wait.** The human reviews/edits IMPLEMENTATION-PLAN.md before anything fans out from it — the board seed, the Unshaped column, and every future orientation run inherit its errors. Resume only on their confirmation.
+**Checkpoint: present the drafts and wait.** The human reviews/edits IMPLEMENTATION-PLAN.md before anything fans out from it — the board seed, the Unshaped items, and every future orientation run inherit its errors. Resume only on their confirmation.
 
-## 3. Create the board — order matters (hard-won hazards)
+## 3. Detect the platform (the once-made choice)
 
-1. `gh project create --owner <owner> --title "<board title>" --format json` → capture project number, ID **and `url`**. Use the returned URL as-is for `<BOARD_URL>` rather than composing one: org boards live at `/orgs/<owner>/projects/<n>` but user-owned boards at `/users/<owner>/projects/<n>`.
-2. `gh project field-list <number> --owner <owner> --format json` → capture the Status field's ID (needed for the mutation below).
-3. **Immediately, BEFORE adding any items**, replace the Status options via the `updateProjectV2Field` GraphQL mutation (single call): Unshaped (PURPLE, "Believed-future work — cheap one-liners, not yet shaped") · Todo (GRAY, "Shaped and ready to be picked up") · Agent working (BLUE, "A coding agent is executing — no PR yet") · Awaiting code review (YELLOW, "A PR exists — draft awaiting promotion, or ready awaiting review") · Awaiting human action (ORANGE, "Decision, sign-off, or real-world action — no diff") · Done (GREEN). **Editing options later regenerates ALL option IDs and silently clears every item's Status** — that's why options come first and why any later edit requires snapshot + re-apply + re-wiring the built-in workflows.
-4. Create the **Responsible** single-select field: `AI agent` (tool-neutral — never a specific product name), one option per developer, one per stakeholder (suffix "(stakeholder)"), `Copilot (AI reviewer)`.
-5. Create repo labels: `human-review`, `agent-work`, `stakeholder`.
-6. Record project number/ID/URL, the owner, and every field/option ID — they go in AGENTS.md in step 5.
+`git remote get-url origin` — `github.com` → `github`; the ADO collection host → `ado`. The platform is chosen **here, once**; it is never re-decided at run time. Nothing is installed or removed yet — the `platforms/` tree stays intact until step 5, because step 4 reads from it.
 
-## 4. Seed the board from the confirmed plan
+## 4. Create the board container — dispatch to `platforms/<p>/setup.md`
 
-- **Unshaped**: one *draft item* (`gh project item-create <n> --owner <o> --title … --body …` — NOT an issue) per plan module/milestone/deferred feature/governance/ops item. Body = one line: source + gate + "(Unshaped: shape into a self-contained issue before pickup.)".
-- **Todo**: items the plan marks shaped-and-actionable now → real issues with self-contained bodies, `agent-work` or `human-review` label, assignee (every card gets one — wrong human beats no one), Responsible.
-- **Awaiting human action**: human gates whose materials already exist (from HUMAN-REVIEW-QUEUE.md), `human-review` (+ `stakeholder`) label.
-- **Done** (optional — ask): completed spikes from `explorations/` as closed issues, so the board opens with honest history rather than an empty Done column.
-- Verify counts with `gh project item-list <n> --owner <o> --limit 200 --format json`, and **check the fetch was complete** rather than trusting the limit — truncation is silent, and the symptom is a card that appears not to exist:
-  `… --format json | jq -e '.totalCount as $t | (.items|length) as $n | if $t == $n then . else error("TRUNCATED: \($n) of \($t)") end'`
-  Once the board has history, prefer server-side filtering over a bigger limit — `--query "-status:Done"` shrinks the fetch because `totalCount` itself drops, whereas a `jq` filter cannot help (the limit applies first). The one exception: never filter Done out when scanning for cleared gates, since closed gate cards live there.
+Read `platforms/<p>/setup.md` and follow it. It creates the board container and its statuses:
 
-## 5. Install the conventions — emit ALL of these, unconditionally (tooling is per developer)
+- **GitHub**: a Project, its Status + Responsible fields/options, and the repo labels.
+- **ADO**: the container **Epic**, the backlog column renames, and the tags (created implicitly).
 
-- **AGENTS.md** (the cross-tool conventions file Codex/OpenCode/others read natively): create or append the "Project board" section — copy the canonical wording (columns incl. Unshaped semantics and no-Blocked rationale; self-contained card bodies; assignee + Responsible + multi-dev lane rule with action-type scoping; signals-vs-payload; session pickup via the next procedure; plumbing recipe) with THIS board's number/owner/IDs substituted. If the repo was stamped from the `coordination` template, AGENTS.md already carries the section with literal tokens: fill `<BOARD_NUMBER>`, `<BOARD_URL>`, `<BOARD_OWNER>`, `<PROJECT_ID>`, `<STATUS_FIELD_ID>`, `<RESPONSIBLE_FIELD_ID>` and every `<OPT_*>`, and replace the Responsible option list's `· …` with this board's developer/stakeholder options. Include the per-tool entry-points note.
-- **CLAUDE.md containing the single line `@AGENTS.md`** (Claude Code import — safer than a symlink on Windows/WSL setups). If a CLAUDE.md already exists with content, merge instead (ask first).
-- **`process/next.md`**: fetch the canonical and fill its `<BOARD_NUMBER>`/`<BOARD_OWNER>`/`<REPO_SLUG>` tokens (step-0 commands). Everything else is generic.
-- **`process/kanban-check.md` and `process/kanban_check.sh` — not optional.** `next`'s orientation passes *are* this procedure, so a repo that ships `next.md` without them ships a procedure with no orientation. Fetch both, `chmod +x` the script, and fill the same tokens — in `kanban-check.md` they sit in its **step 1** (its step 0 is only the freshness check and holds no repo literals), and in the script they are the `REPO`/`OWNER`/`PROJECT` constants at the top. **Verify by grepping each file for the setup tokens by exact name — `grep -nE '<(REPO_SLUG|BOARD_OWNER|BOARD_NUMBER|BOARD_URL|PROJECT_ID|STATUS_FIELD_ID|RESPONSIBLE_FIELD_ID|OPT_[A-Z_]+)>'` must print nothing — and for the *source* project's board number and owner, rather than trusting a step number.** Don't grep for a bare `<`: these files legitimately keep procedural placeholders such as `<path>`, `<operator>`, `<nonce>` and `<number>`, so that search can never come back clean. Why it matters: a missed substitution has orientation reporting some other project's board into this one's, and a wrong-data run looks exactly like a good one. The script guards itself (it refuses to run while any placeholder remains), but `kanban-check.md` cannot, and a hand-run fallback would follow whatever literals it carries.
-- **`process/board-setup.md`**: copy this file in, so the new repo can bootstrap others and evolve independently if it must.
-- **Entry-point wrappers — two per tool, and emit all six.** Each `next` wrapper points at `process/next.md` and says the deliverable is the work its step 4 selects — a **draft** PR or a recorded blocker, and that only the human promotes the draft to ready-for-review — not the orientation report. Each `kanban-check` wrapper runs `process/kanban_check.sh` as the normal path and names `process/kanban-check.md` as its specification and by-hand fallback, strictly read-only either way. The non-recursion rule itself lives in that procedure's own Absolute rules, so a wrapper's copy of it is a belt rather than the mechanism.
-  - `.claude/skills/{next,kanban-check}/SKILL.md` (Claude Code): frontmatter + "Read `process/<file>` and follow it exactly"; the next wrapper also passes arguments through as the work-selection filter.
-  - `.opencode/command/{next,kanban-check}.md` (OpenCode): command frontmatter + the same bodies, with `$ARGUMENTS` on next. Orientation is a script every tool runs directly, so no wrapper needs a delegation clause; if you reintroduce model-delegated orientation, the opencode `next` wrapper needs a line telling it to run the passes in-process and never spawn another `opencode run`, or it hands the work to itself.
-  - `.codex/skills/{next,kanban-check}/SKILL.md` (Codex): repo-level skill discovery verified on Codex 0.145.0; same thin pointers, plus any sandbox note the developer's setup needs (a managed Codex sandbox typically cannot write `.git/FETCH_HEAD` or reach the GitHub API, so tell it to escalate on the first attempt rather than spending a probe call). The AGENTS.md entry-points note remains the fallback for tools without discovery; Codex devs wanting the literal `/next` slash also copy the body to `~/.codex/prompts/next.md`.
-- Commit per the flow chosen in step 0 (PR + review, or direct). Use a temporary worktree if other sessions may share the working tree.
+**Capture the ids it yields** — the Epic id (ADO) or project/field/option ids (GitHub). They go in `board.conf` (step 5) and AGENTS.md (step 7).
 
-## 6. Hand the human their checklist (the API cannot do these)
+## 5. Install the bundle and record the choice
 
-- Board UI → default view: **Board layout grouped by Status** (nice second view: group by Responsible).
-- Board **⋯ → Workflows**: *Item closed* → Status Done; *Pull request merged* → Status Done; *Auto-close issue* when Status = Done. Leave *Item added* OFF (statuses are set deliberately per card type).
-- **Manage access**: share the project with the team.
-- Each developer, regardless of tool: `gh auth refresh -s project` once. Codex users: sandbox/approval settings must permit `gh` and `git`; optionally install `~/.codex/prompts/next.md`.
+Now that the board ids exist:
+
+1. **Install** the chosen variant into its final place: copy `platforms/<p>/next.md` → `process/next.md`, `…/kanban-check.md` → `process/kanban-check.md`, `…/kanban_check.sh` → `process/kanban_check.sh`, `…/board.sh` → `process/board.sh`, and the transport (`platforms/ado/ado_api.sh` → `process/ado_api.sh`).
+2. **Write `board.conf`** at the repo root — `BOARD_PLATFORM=<p>` plus the ids from step 4 and the repo id — and **commit it**. This is the record of the once-made choice, not a runtime switch.
+3. **Remove** the unchosen variant and the `platforms/` staging tree.
+4. `chmod +x process/board.sh process/kanban_check.sh`.
+
+## 6. Seed the board from the confirmed plan
+
+- **Unshaped**: one item per plan module/milestone/deferred feature/governance/ops item — a GitHub **draft item**, an ADO **Feature** under the Epic. Body = one line: source + gate + "(Unshaped: shape into a self-contained card before pickup.)".
+- **Todo**: items the plan marks shaped-and-actionable now → cards with self-contained bodies, the `agent-work` (AI-agent work) or `human-review` (a human gate) tag, an assignee (every card gets one — wrong human beats no one), status Todo.
+- **Awaiting human action**: human gates whose materials already exist (from HUMAN-REVIEW-QUEUE.md), tagged `human-review`.
+- **Done** (optional — ask): completed spikes from `explorations/` as closed cards, so the board opens with honest history.
+- Verify with the orientation read (`process/board.sh orient --scope <id>` on ADO) and confirm the counts/states are what you seeded. Check for orphaned coordination items — on ADO an item not parented into the Epic does not appear on the board.
+
+## 7. Install the conventions — emit ALL of these, unconditionally (tooling is per developer)
+
+- **AGENTS.md** (the cross-tool conventions file Codex/OpenCode/others read natively): create or append the "Project board" section — the platform-neutral conventions (the board model, statuses incl. Unshaped semantics and no-Blocked rationale; self-contained card bodies; assignee + tag-based Responsible + multi-dev lane rule with action-type scoping; signals-vs-payload; session pickup via the next procedure) plus this platform's board block, with THIS board's team/area/Epic/repo id (ADO) or number/owner/field/option ids (GitHub) substituted. The platform's `MECHANICS.md` is the plumbing recipe the block summarizes.
+- **CLAUDE.md containing the single line `@AGENTS.md`** (Claude Code import — safer than a symlink on Windows/WSL). If a CLAUDE.md already exists with content, merge instead (ask first).
+- **`process/next.md`, `process/kanban-check.md`, `process/kanban_check.sh`, `process/board.sh`, and the transport** — **not optional**, and installed by step 5. `next`'s orientation passes *are* this bundle, so a repo that ships `next.md` without them ships a procedure with no orientation.
+- **`process/board-setup.md`** (this file): copy it in, so the new repo can bootstrap others.
+- **Entry-point wrappers — two per tool, emit all six.** Each `next` wrapper points at `process/next.md` and says the deliverable is the work its step-4 selection produces — a **draft** PR or a recorded blocker, and that only the human promotes the draft to ready-for-review. Each `kanban-check` wrapper runs `process/kanban_check.sh` as the normal path and names `process/kanban-check.md` as its specification and by-hand fallback, strictly read-only either way. The non-recursion rule lives in that procedure's own Absolute rules.
+  - `.claude/skills/{next,kanban-check}/SKILL.md` (Claude Code): frontmatter + "Read `process/<file>` and follow it exactly"; the next wrapper passes arguments through as the work-selection filter.
+  - `.opencode/command/{next,kanban-check}.md` (OpenCode): command frontmatter + the same bodies, with `$ARGUMENTS` on next. Orientation is a script every tool runs directly, so no wrapper needs a delegation clause; if you reintroduce model-delegated orientation, the opencode `next` wrapper needs a line telling it to run the passes in-process and never spawn another `opencode run`.
+  - `.codex/skills/{next,kanban-check}/SKILL.md` (Codex): same thin pointers, plus any sandbox note the developer's setup needs (a managed Codex sandbox typically cannot write `.git/FETCH_HEAD` or reach the platform API/host, so tell it to escalate on the first attempt).
+- Commit per the flow chosen in step 0. Use a temporary worktree if other sessions may share the working tree.
+
+## 8. Hand the human their checklist (the API cannot do these)
+
+- **GitHub**: board UI → default view grouped by Status (and by Responsible); ⋯ → Workflows (Item closed → Done; PR merged → Done; Auto-close when Done); share the project with the team; each developer runs `gh auth refresh -s project`.
+- **ADO**: team + area path exist (Collection Admin); confirm the backlog columns; each developer mints a PAT with `vso.work_write`/`vso.code_write`/`vso.project` and exports `ADO_PAT`; **IIS Basic Authentication disabled**; the optional `Responsible` picklist field needs a Collection Admin (tags carry it until then).
+- Codex users: sandbox/approval settings must permit the platform transport and `git`.
 
 ## Output shape
 
-End with: docs written (paths), board URL, per-column seed counts, the human checklist above, and the suggestion to run the next procedure for the first work pickup.
+End with: docs written (paths), the board link (GitHub project URL / ADO Epic URL), per-status seed counts, the human checklist above, and the suggestion to run the next procedure for the first work pickup.
