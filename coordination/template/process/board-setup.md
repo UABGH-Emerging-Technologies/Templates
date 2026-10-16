@@ -40,7 +40,7 @@ Write drafts (do not seed anything yet):
 
 - **IMPLEMENTATION-PLAN.md** — the source of truth for module/milestone status, dependencies, and gates. Include: a decisions section (owner-decided, with provenance to the `plan/` file each came from), an open-questions section, and per-item gates ("needs X before actionable"). Spike outcomes from `explorations/` annotate the items they de-risk.
 - **HUMAN-REVIEW-QUEUE.md** — skeleton, pre-populated with any human gates the plan already implies (sign-offs, legal reads, approvals).
-- **PROCESS.md** — adapt this repo's `PROCESS.md` (project title, repo, board link).
+- **PROCESS.md** — adapt this repo's `PROCESS.md` (project title, repo, board link). Its board rationale is installed at step 7 (the `<!-- PROCESS-BOARD-BLOCK -->` marker).
 
 **Checkpoint: present the drafts and wait.** The human reviews/edits IMPLEMENTATION-PLAN.md before anything fans out from it — the board seed, the Unshaped items, and every future orientation run inherit its errors. Resume only on their confirmation.
 
@@ -76,9 +76,10 @@ Now that the board ids exist:
 
 ## 7. Install the conventions — emit ALL of these, unconditionally (tooling is per developer)
 
-- **AGENTS.md** (the cross-tool conventions file Codex/OpenCode/others read natively): create or append the "Project board" section — the platform-neutral conventions (the board model, statuses incl. Unshaped semantics and no-Blocked rationale; self-contained card bodies; assignee + tag-based Responsible + multi-dev lane rule with action-type scoping; signals-vs-payload; session pickup via the next procedure) plus this platform's board block, with THIS board's team/area/Epic/repo id (ADO) or number/owner/field/option ids (GitHub) substituted. The platform's `MECHANICS.md` is the plumbing recipe the block summarizes.
+- **AGENTS.md** (the cross-tool conventions file Codex/OpenCode/others read natively): the stamped file carries a `<!-- BOARD-BLOCK -->` marker where the board conventions go. **Replace that marker** with the chosen platform's board block — `platforms/<p>/AGENTS.board.md` — substituting THIS board's ids: team/area/Epic/repo id (ADO) or number/owner/field/option ids (GitHub). The platform's `MECHANICS.md` is the plumbing recipe that block summarizes. **Exactly one block is installed:** never leave the marker and a block in place together, and never leave both platforms' blocks.
 - **CLAUDE.md containing the single line `@AGENTS.md`** (Claude Code import — safer than a symlink on Windows/WSL). If a CLAUDE.md already exists with content, merge instead (ask first).
 - **`process/next.md`, `process/kanban-check.md`, `process/kanban_check.sh`, `process/board.sh`, and the transport** — **not optional**, and installed by step 5. `next`'s orientation passes *are* this bundle, so a repo that ships `next.md` without them ships a procedure with no orientation.
+- **PROCESS.md board block**: replace the `<!-- PROCESS-BOARD-BLOCK -->` marker with the chosen platform's board rationale, `platforms/<p>/PROCESS.board.md`, ids substituted. The neutral rationale around it (premise, no-Blocked, shaping, lead-with-the-ask, signals-vs-payload, actors) stays as stamped. Exactly one block, same rule as AGENTS.md above.
 - **`process/board-setup.md`** (this file): copy it in, so the new repo can bootstrap others.
 - **Entry-point wrappers — two per tool, emit all six.** Each `next` wrapper points at `process/next.md` and says the deliverable is the work its step-4 selection produces — a **draft** PR or a recorded blocker, and that only the human promotes the draft to ready-for-review. Each `kanban-check` wrapper runs `process/kanban_check.sh` as the normal path and names `process/kanban-check.md` as its specification and by-hand fallback, strictly read-only either way. The non-recursion rule lives in that procedure's own Absolute rules.
   - `.claude/skills/{next,kanban-check}/SKILL.md` (Claude Code): frontmatter + "Read `process/<file>` and follow it exactly"; the next wrapper passes arguments through as the work-selection filter.

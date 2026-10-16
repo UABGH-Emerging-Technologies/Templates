@@ -4,24 +4,26 @@
 
 ## What the pattern is (one paragraph)
 
-Coding agents made writing code cheap; the scarce resource is human judgment. A shared GitHub Project board is the queue-management UI for it: agents enqueue judgment requests as cards (reviews, sign-offs, decisions), humans drain them in batches, and everything tool-shaped lives in md files that any agent (Claude Code, OpenCode, Codex, …) can follow. Columns: **Unshaped** (the fluid plan, as cheap draft items) → **Todo** (shaped, self-contained) → **Agent working** → **Awaiting code review** → **Awaiting human action** → **Done**. Deliberately no Blocked column — every column answers "who acts next." Full rationale: `template/PROCESS.md.jinja` (rendered into each project).
+Coding agents made writing code cheap; the scarce resource is human judgment. A shared board is the queue-management UI for it: agents enqueue judgment requests as cards (reviews, sign-offs, decisions), humans drain them in batches, and everything tool-shaped lives in md files that any agent (Claude Code, OpenCode, Codex, …) can follow. Columns: **Unshaped** (the fluid plan, as cheap draft items) → **Todo** (shaped, self-contained) → **Agent working** → **Awaiting code review** → **Awaiting human action** → **Done**. Deliberately no Blocked column — every column answers "who acts next." The board is a **GitHub Project** (`gh`) or an **Azure DevOps Epic subtree** (REST), chosen once per repo by `board-setup` from the repo's origin; the platform-specific conventions ship in `template/platforms/{github,ado}/`. Full rationale: `template/PROCESS.md.jinja` (rendered into each project).
 
 ## What this template stamps
 
 ```
-AGENTS.md               cross-tool conventions (rules index + board section; IDs filled by board-setup)
+AGENTS.md               cross-tool conventions (rules index + a <!-- BOARD-BLOCK --> marker; board-setup fills it)
 CLAUDE.md               one-line @AGENTS.md import (Claude Code reads the same conventions)
-PROCESS.md              the rationale document, project-name rendered
-process/next.md         canonical orientation procedure (board tokens filled by board-setup)
-process/kanban-check.md read-only orientation spec + by-hand fallback (self-contained on purpose)
-process/kanban_check.sh the executable orientation report `next` actually runs
+PROCESS.md               the rationale document, project-name rendered (a <!-- PROCESS-BOARD-BLOCK --> marker)
 process/board-setup.md  canonical bootstrap procedure (self-contained; can also be fetched cross-repo)
+platforms/github/…      GitHub bundle: next.md, kanban-check.md, kanban_check.sh,
+                        AGENTS.board.md, PROCESS.board.md, MECHANICS.md, setup.md
+platforms/ado/…         ADO bundle: the same, plus ado_api.sh (REST transport) and board.sh (verb CLI)
 .claude/skills/…        thin entry-point wrappers (next, kanban-check, board-setup)  — Claude Code
 .opencode/command/…     thin entry-point wrappers                                     — OpenCode
 .codex/skills/…         thin entry-point wrappers                    — Codex (repo-level discovery verified on 0.145.0)
 ```
 
 All wrapper sets are emitted unconditionally: tooling is per developer, not per team.
+
+**One template, two platforms.** The pattern runs on **GitHub** (a Project board + `gh`) and on **Azure DevOps Server** (an Epic subtree + REST). `board-setup` **detects the platform once** from `git remote get-url origin` (step 3), creates the board container via `platforms/<p>/setup.md` (step 4), installs the matching bundle into `process/` (step 5), and writes `board.conf` — the committed record of that once-made choice, never a run-time switch. So each repo ends up with exactly one platform's `process/next.md`, `kanban-check.md`, `kanban_check.sh` (plus `board.sh`/`ado_api.sh` on ADO) and exactly one board block in `AGENTS.md`/`PROCESS.md`; the `platforms/` staging tree is removed. `board-setup.md` step 7 replaces the `<!-- BOARD-BLOCK -->` and `<!-- PROCESS-BOARD-BLOCK -->` markers with the chosen platform's `platforms/<p>/AGENTS.board.md` / `PROCESS.board.md`.
 
 `kanban_check.sh` ships with `<REPO_SLUG>` / `<BOARD_OWNER>` / `<BOARD_NUMBER>` placeholders and **refuses to run while any of them remain** — a half-substituted orientation script would report some other project's board into this one's, and a wrong-data run looks exactly like a good one.
 

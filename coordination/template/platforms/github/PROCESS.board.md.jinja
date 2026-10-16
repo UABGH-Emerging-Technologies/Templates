@@ -1,0 +1,20 @@
+## The board
+
+One shared board per project (not per developer — the whole point is that all open human gates are visible in one place). On GitHub that board is a **Projects v2 project**, whose cards are issues and board-only **draft items**. Personal views come from filtering by assignee, not from separate boards.
+
+### Columns, precisely
+
+| Column | Meaning | How a card leaves |
+|---|---|---|
+| **Unshaped** | The fluid project plan: everything we believe we'll do, as cheap one-line **draft items** (board-only, not repo issues). Carries source + gate only. | Someone *shapes* it: writes a self-contained description, converts draft → real issue, adds labels/assignee/Responsible, moves to Todo. |
+| **Todo** | Shaped and ready to execute — an agent (or human) could pick this up cold. | Work starts → Agent working (or the human just does it). |
+| **Agent working** | A coding agent is actively executing (no PR yet). | Draft PR posted → Awaiting code review. Abandoned or paused without a PR → swept back to Todo (see gotchas). |
+| **Awaiting code review** | A draft or ready diff exists; the asked-for act is code review — promote the draft to ready-for-review, then merge. | Human promotes the draft to ready-for-review → ready PR; clean review → human merges → Done. |
+| **Awaiting human action** | No diff. A decision, sign-off, or real-world act. | The human acts: comment carries the substance; **close = decision complete** (approve or reject). A change-request comment instead re-queues the card to Todo, where it competes for selection like any other card; when picked it goes to Agent working and then back here — see signals vs payload. |
+| **Done** | Merged / approved / verified. Closed issues are ground truth, so this column is real, not decorative. | — |
+
+### Platform gotchas
+
+- Editing a Projects v2 single-select field's options (rename **or** add) **regenerates every option ID and silently clears every card's value** — snapshot `item-list` first, re-apply after, then re-wire the board's built-in workflows (Item closed → Done etc.) in the UI.
+- **`gh project item-list` truncates silently, and no fixed limit stays big enough.** The default is 30; `--limit 100` was the fix until the pilot's board outgrew *that*, and the only symptom was a freshly-created card that appeared not to exist. So raising the number is not the lesson: filter server-side (`--query "-status:Done"`, which shrinks `totalCount` itself) and guard every **board** fetch by comparing `totalCount` against the items returned. That qualifier matters — `gh issue list` has no `totalCount` at all (asking for it errors), so the closed-gate and PR fetches need the weaker returned-equals-limit tripwire instead. Exact commands in `process/next.md` step 0. *(Measured on the pilot 2026-09-28: 241 items on the board but only 75 non-Done, so the filtered fetch is well inside its limit while an unfiltered one truncates — the failure mode that remains is an ad-hoc query typed without `--query` and without the guard, not a stale number. And when a guarded issue/PR list does fill up, the orientation script refetches at double and warns rather than aborting: a short list the reader knows about is recoverable, no report at all is not.)* *(This bullet was wrong twice on the pilot before it was right: one PR corrected the advice in four other files and missed this one, a second fixed it here as a drive-by, and a third reverted that second PR wholesale at the owner's request — restoring the bad wording. A revert is scoped to a PR, not to a topic, so an unrelated drive-by fix inside it dies with it. Land a correction on its own card.)*
+- The Actions `GITHUB_TOKEN` cannot touch Projects v2; board mutations happen from local sessions via `gh` (token needs the `project` scope).

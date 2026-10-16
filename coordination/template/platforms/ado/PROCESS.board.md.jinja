@@ -1,0 +1,29 @@
+## The board
+
+**One shared board per project** (not per developer — the whole point is that all open human gates are visible in one place). On ADO that board is **an Epic**: the Epic is the container, its **Features** are the Unshaped plan, its **User Stories** are the Shaped work. The Epic lives in a team scoped to an area path (**<BOARD_TEAM>**, area `<BOARD_AREA>`). Personal views come from filtering by assignee, not from separate boards.
+
+**Why an Epic subtree and not a flat board.** ADO's native Agile states (New / Active / Resolved / Closed) cannot express six coordination statuses without customizing the process — a Project Collection Administrator act, and a shared resource. The native **Epic → Feature → User Story** hierarchy carries the structure instead, needs no customization, and bounds the read: <BOARD_PROJECT> holds ~22,779 work items, so a whole-project read is impossible; `/next <BOARD_SCOPE>` reconciles exactly one Epic's `Hierarchy-Forward` subtree (tens of items). The scale is a correctness requirement, not an optimisation.
+
+### Columns, precisely
+
+The columns are a view. What the script reads is **`System.State` plus the tag `human-review`**, because two of the six statuses collide on `Resolved`:
+
+| Coordination status | Native state | Carrier | How a card leaves |
+|---|---|---|---|
+| **Unshaped** | `Feature: New` | the Feature type | Someone *shapes* it: writes self-contained User Stories under it, tags/assigns them, sets them `New`. |
+| **Todo** | `User Story: New` | User Story (tag `agent-work`) | Work starts → Agent working (or the human just does it). |
+| **Agent working** | `User Story: Active` | User Story | Draft PR posted → Awaiting code review. Abandoned or paused without a PR → swept back to Todo (see gotchas). |
+| **Awaiting code review** | `User Story: Resolved` | User Story, **no** `human-review` tag | Human promotes the draft to ready-for-review → ready PR; clean review → human merges → Done. |
+| **Awaiting human action** | `User Story: Resolved` | **tag `human-review`** | The human acts: comment carries the substance; **close = decision complete** (approve or reject). A change-request comment instead re-queues the card to Todo, where it competes for selection like any other card; when picked it goes to Agent working and then back here — see signals vs payload. |
+| **Done** | `User Story: Closed` | User Story | — |
+
+The two `Resolved` statuses are a **split column** on the Stories board (native to ADO — an existing board already maps two columns to one state), but the split column is a *visual convenience only*: **the tag `human-review` is the carrier**, because the script must tell the two apart from data, not from board layout. `agent-work` is likewise the "Responsible = AI agent" carrier — the deliberate choice, not a stopgap: a custom picklist field would need a Collection Admin, and the tags carry the same information without one.
+
+### Platform gotchas
+
+- **`MODE(Recursive)`, never `MODE(MustContain)`, for the subtree.** MustContain returns only *direct* children and silently drops grandchildren — a User Story under a Feature under the Epic just vanishes, and a partial board looks exactly like a full one. Verified on the live server 2026-10-15.
+- **The board is the Epic's subtree, so an unparented card is invisible.** Only 9,524 of <BOARD_PROJECT>'s 22,779 items have a parent. Any coordination item that is not linked into the Epic does not appear on the board — check for orphans after seeding.
+- **Scale is a correctness requirement.** A whole-project read is impossible (22,779 items). Every pass is Epic-scoped; a query that forgets the scope drowns, and there is no `totalCount`-style guard to catch it because the read never asks for the whole project.
+- **The tag route is read-only on this server.** `POST`/`PATCH`/`PUT`/`DELETE …/_apis/wit/tags` all return **405**; a tag is created **implicitly** by the first work item that carries it. And a JSON-patch **`add` on `System.Tags` appends** — use `replace` to set the whole set (read the current tags first and re-send them all). Verified 2026-10-15.
+- **The comments API is still preview here.** `GET/POST …/workItems/<id>/comments` needs `api-version=6.0-preview`; `6.0` returns HTTP 400. Everything else is GA `6.0`.
+- **The work-items batch caps at 200 ids.** A subtree bigger than one chunk is normal; the transport chunks and merges rather than 400-ing. The **PR list** is the only unbounded fetch (`$top=1000`), and a full page is ambiguous — `kanban_check.sh` warns with a `LIMITS:` line rather than aborting.
