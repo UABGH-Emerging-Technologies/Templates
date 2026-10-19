@@ -1,0 +1,47 @@
+@startuml claim-protocol-sequence
+' Claim protocol — Sequence diagram (associated process)
+' Source: next.md "Claims" section and kanban-check.md gate/claim rules
+title Claim protocol — comment-ID arbitration
+autonumber
+
+participant "Session A\n(operator X)" as A
+participant "Session B\n(operator X, another session)" as B
+database "GitHub issue\ncomment stream" as GH
+
+note over A, B
+  GitHub has no atomic test-and-set.
+  The comment stream is append-only,
+  attributed, and totally ordered by
+  comment ID, so it is the arbiter.
+  Status and assignee are only the
+  human-visible signal.
+end note
+
+A -> GH : read comments (check)
+B -> GH : read comments (check)
+GH -> A : unclaimed
+GH -> B : unclaimed
+
+A -> GH : Claiming: operator X, nonce A
+B -> GH : Claiming: operator X, nonce B
+
+A -> GH : re-fetch comments (verify)
+B -> GH : re-fetch comments (verify)
+GH -> A : both claims, with IDs
+GH -> B : both claims, with IDs
+
+A -> A : A has the lower comment ID — A wins
+B -> GH : edit B marker to append (superseded)
+
+A -> A : only now do the slow part
+A -> GH : finish and post the result
+
+note over A, GH
+  A gate uses the same protocol with
+  Processed: in progress — then a
+  finalized Processed: acknowledgment.
+  A finalized marker hides the gate.
+  An in-progress claim older than 24h
+  is abandoned and may be superseded.
+end note
+@enduml

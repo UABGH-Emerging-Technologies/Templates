@@ -1,0 +1,57 @@
+@startuml board-setup-use-case
+' board-setup — Use Case diagram
+' Source procedure: coordination/template/process/board-setup.md
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+
+actor "Repository Owner\n(human)" as Owner
+actor "Coding Agent\n(Claude Code / OpenCode / Codex)" as Agent
+actor "GitHub Projects API" as GH
+actor "Templates Repo\n(canonical assets)" as Templates
+
+rectangle "board-setup — instantiate the human+agent coordination pattern" {
+
+  usecase "Verify preconditions" as UC1
+  usecase "Answer up-front questions" as UC2
+  usecase "Ingest plan/ and explorations/" as UC3
+  usecase "Draft plan docs\n(IMPLEMENTATION-PLAN, HRQ, PROCESS)" as UC4
+  usecase "Review and approve drafts" as UC5
+  usecase "Create project board" as UC6
+  usecase "Configure Status options\nbefore any item is added" as UC7
+  usecase "Create Responsible field and labels" as UC8
+  usecase "Seed board from confirmed plan" as UC9
+  usecase "Install cross-tool conventions\n(AGENTS.md, CLAUDE.md, process/, wrappers)" as UC10
+  usecase "Verify token substitution" as UC11
+  usecase "Commit conventions\n(PR + review, or direct)" as UC14
+  usecase "Hand off human checklist" as UC12
+  usecase "Suggest running next procedure" as UC13
+}
+
+Agent --> UC1
+Agent --> UC3
+Agent --> UC4
+Agent --> UC6
+Agent --> UC7
+Agent --> UC8
+Agent --> UC9
+Agent --> UC10
+Agent --> UC11
+Agent --> UC12
+Agent --> UC14
+Agent --> UC13
+
+Owner --> UC2
+Owner --> UC5
+
+UC1 --> GH
+UC4 --> Templates
+UC6 --> GH
+UC7 --> GH
+UC8 --> GH
+UC9 --> GH
+UC10 --> Templates
+
+UC4 .> UC5 : <<include>>
+UC9 .> UC5 : <<include>>
+@enduml

@@ -1,0 +1,74 @@
+@startuml next-sequence
+' next — Sequence diagram
+' Source procedure: coordination/template/process/next.md
+title next — orientation, claim, plan, work, hand-off
+autonumber
+
+actor "Operator\n(human)" as Operator
+participant "Coding Agent\n(orchestrator)" as Agent
+participant "kanban_check.sh" as Script
+participant "git" as Git
+participant "GitHub API\n(board, issues, PRs)" as GH
+participant "Fresh-eyes Reviewer\n(context-blind)" as Reviewer
+
+Operator -> Agent : /next [card number or filter]
+activate Agent
+
+group Steps 0-3 — orientation
+  Agent -> Script : run kanban_check.sh
+  Script -> GH : gh project item-list, gh issue list, gh pr list
+  Script -> Git : git fetch, status, show,\nworktree list, ls-remote
+  GH -> Script : board, issues, PRs
+  Git -> Script : refs, branches, HRQ from origin/main
+  Script -> Script : guard fetches for truncation
+  Script -> Agent : KANBAN-CHECK REPORT (read-only)
+end
+
+group Step 1 — sync pass (global)
+  Agent -> GH : move cards to match ground truth
+  Agent -> GH : sweep stale work claims (24h, no PR, no branch)
+end
+
+group Step 2 — cleared-gate pass (claim-guarded)
+  Agent -> GH : re-fetch gate comments
+  Agent -> GH : comment Processed in progress with nonce
+  Agent -> GH : re-fetch, verify lowest comment ID
+  alt claim lost
+    Agent -> GH : edit marker to append superseded
+  else claim won
+    Agent -> GH : process payload, file follow-ons,\nfinalize Processed acknowledgment
+  end
+end
+
+group Step 3 — human nudge
+  Agent -> Operator : list operator Awaiting-human-action queue
+  Agent -> Operator : note other lanes idle 7+ days
+end
+
+group Step 4 — pick and claim
+  Agent -> Agent : select lowest Todo in lane
+  Agent -> GH : comment Claiming with operator and nonce
+  Agent -> GH : re-fetch, verify earliest claim
+  Agent -> GH : move card to Agent working
+end
+
+group Step 5 — plan gate
+  Agent -> Agent : investigate read-only
+  Agent -> Operator : ask questions, present plan
+  Operator -> Agent : explicit approval
+  Agent -> GH : record approved plan on card
+end
+
+group Step 6-7 — work and hand-off
+  Agent -> Agent : implement and verify
+  Agent -> Reviewer : card number and diff —\nreview for defects, report findings, do not edit
+  Reviewer -> Agent : findings
+  Agent -> Operator : findings plus testing report\nand proposed manual test
+  Operator -> Agent : accept or defer
+  Agent -> GH : open DRAFT PR, move card to Awaiting code review
+end
+
+Agent -> Operator : done — human promotes and merges
+deactivate Agent
+
+@enduml

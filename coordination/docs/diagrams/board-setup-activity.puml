@@ -1,0 +1,64 @@
+@startuml board-setup-activity
+' board-setup — Activity diagram
+' Source procedure: coordination/template/process/board-setup.md
+title board-setup — instantiate the coordination pattern
+
+start
+:Run board-setup procedure\n(any tool: Claude Code / OpenCode / Codex);
+
+:Step 0 — verify preconditions\n(repo, plan/, explorations/, token scope,\nduplicate board, existing conventions);
+
+if (All preconditions pass?) then (no)
+  :Ask the human immediately;
+  stop
+else (yes)
+endif
+
+:Ask up-front questions in one batch\n(board title, stakeholders without GitHub,\ndevelopers, commit flow);
+
+:Step 1 — ingest plan/ and explorations/\n(read md, txt, PDFs, images visually;\nconvert docx/pptx when possible);
+
+if (Unreadable files remain?) then (yes)
+  :List them and request exports\nbefore drafting;
+  stop
+else (no)
+endif
+
+:Step 2 — draft IMPLEMENTATION-PLAN.md,\nHUMAN-REVIEW-QUEUE.md, PROCESS.md;
+
+:CHECKPOINT — present drafts and wait;
+
+if (Human approves the plan?) then (no)
+  :Revise drafts;
+else (yes)
+endif
+
+:Step 3 — create project\n(capture number, ID and url);
+:Read Status field ID;
+
+:Replace Status options FIRST\nUnshaped, Todo, Agent working,\nAwaiting code review,\nAwaiting human action, Done;
+note right
+  Options come before any item is added.
+  Editing options later regenerates all
+  option IDs and silently clears every
+  item Status.
+end note
+
+:Create Responsible field\n(AI agent, developers, stakeholders, Copilot);
+:Create repo labels\n(human-review, agent-work, stakeholder);
+:Record every field and option ID;
+
+:Step 4 — seed board from confirmed plan\n(Unshaped drafts, Todo issues, gates, optional Done);
+:Verify counts with the totalCount guard\n(truncation is silent);
+
+:Step 5 — emit ALL conventions unconditionally\n(AGENTS.md, CLAUDE.md, process/ files, 6 wrappers);
+
+:Verify no leftover setup tokens remain\n(grep by exact token name AND for the\nsource project's board number and owner);
+
+:Commit per the chosen flow\n(PR with review, or direct);
+
+:Step 6 — hand the human their checklist\n(board view, workflows, access, gh auth refresh);
+
+:Output shape — docs written, board URL,\nper-column seed counts, checklist;
+stop
+@enduml

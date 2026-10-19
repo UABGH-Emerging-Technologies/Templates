@@ -1,0 +1,47 @@
+@startuml kanban-check-activity
+' kanban-check — Activity diagram (associated process)
+' Sources: process/kanban-check.md and process/kanban_check.sh
+title kanban-check — deterministic read-only report
+
+start
+:Resolve operator\n(gh api user, unless the invoker names one);
+
+:Step 0 — freshness and hygiene\n(git fetch origin main -q, git status,\ngit worktree list, extra branches);
+
+:Read board conventions from origin/main\n(git show origin/main:AGENTS.md);
+
+:Step 1 — pull state;
+:Board fetch — live work only\n(gh project item-list --query -status:Done);
+:Guard board fetch with totalCount\n(truncation is a hard failure);
+
+:Issue fetch — deliberate superset\n(gh issue list --state all, plus bodies);
+:Guard issue fetch by returned equals limit;\nrefetch once at double, else report LIMITS;
+
+:PR fetch — gh pr list;
+:Read HUMAN-REVIEW-QUEUE.md from origin/main;
+:Resolve remote branches — git ls-remote --heads origin;
+
+:Step 2 — sync findings\n(closed or merged not Done, PR without card,\nHRQ items without card, checked-off HRQ items,\nstale work claims);
+
+:Step 3 — gate findings\n(closed human-review with no finalized marker;\nopen Awaiting-human-action with new comments);
+
+:Step 4 — queue and candidates\n(operator gates with ask lines, Todo by number);
+
+:Classify nothing — interpretation is the orchestrator's;\nquote gate payloads and candidate comments verbatim;
+
+:Emit report between fixed markers\n=== KANBAN-CHECK REPORT === ... === END ===;
+
+stop
+
+note right
+  READ-ONLY. No gh mutation, no repo file
+  edit, and git is limited to the allowlist:
+  fetch origin main -q, status, show,
+  worktree list, branch, ls-remote.
+end note
+
+note right
+  NON-RECURSIVE. Run every step yourself;
+  never spawn another agent.
+end note
+@enduml
