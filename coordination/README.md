@@ -29,6 +29,16 @@ All wrapper sets are emitted unconditionally: tooling is per developer, not per 
 
 ## How it's used
 
+**Multi-repository initiatives (opt-in):** the orientation script accepts
+`--manifest path/to/repositories.json` for a qualified, read-only master-board
+report. The schema and completeness rules are in
+`template/platforms/github/kanban-check.md`. Existing single-repository consumers keep
+their current invocation. A product repository adopts a reviewed Templates
+revision, supplies and verifies its own manifest, runs the multi-repository
+fixtures and sandbox checks, and updates its local specification and wrappers.
+Do not remove a product's master automation guard on the strength of this
+orientation change alone: write-bearing `/next` and adoption are separate work.
+
 **Greenfield**: apply this template (alongside `common`/`fastapi_app`/…), put planning artifacts in `plan/` and feasibility spikes in `explorations/`, then have any coding agent run the `board-setup` procedure — it ingests `plan/` + `explorations/`, drafts IMPLEMENTATION-PLAN.md for human review, creates and seeds the board, and fills the `<BOARD_NUMBER>`-style tokens the template leaves behind.
 
 ```
