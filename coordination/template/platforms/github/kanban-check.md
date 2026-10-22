@@ -1,6 +1,9 @@
 # kanban-check — read-only board orientation report (tool-neutral procedure)
 
-## Opt-in multi-repository orientation (PLAN-C1a)
+## Opt-in multi-repository orientation
+
+This section governs multi-repository mode; the remaining single-repository
+examples below retain their established scope and behavior.
 
 `process/kanban_check.sh --manifest plan/repositories.json` selects the
 repository-aware report. Invocations without `--manifest` keep the established
@@ -12,9 +15,13 @@ checkout, and `integration_branch`. When the manifest is in `plan/`, the
 owning project checkout is that directory's parent; otherwise it is the
 manifest directory. Optional `review_queue_repository` selects the
 repository holding `HUMAN-REVIEW-QUEUE.md`; it defaults to the first repository.
-Other manifest keys are allowed but do not widen the report's scope. This
-contract is opt-in; the ai-desktop candidate manifest is not silently a stable
-public API. Invalid required fields stop before queries.
+Optional `review_queue_ref` must be a full 40-character commit SHA and selects
+that exact commit's review-queue document; STEP0 and SOURCES show the reference
+as an explicit branch-local commit. Without it, the configured integration
+branch supplies the document. No missing document falls back to another ref.
+This override does not change integration-branch freshness or establish main
+installation readiness. Other manifest keys do not widen scope. Invalid required
+fields or an invalid explicit reference stop before queries.
 
 The multi-repository report retains the outer `=== KANBAN-CHECK REPORT ===`
 markers and the `STEP0`, `SYNC`, `GATES`, `QUEUE`, and `CANDIDATES` sections. It
@@ -23,6 +30,7 @@ linked-development connection, review queue, and in-scope issue comment stream
 complete or `INCOMPLETE` with a reason. An
 incomplete report exits 1 and carries an overall incomplete line. No empty
 section in that case asserts that the work is done or a gate was approved.
+Candidate selection is suppressed whenever any required source is incomplete.
 Every issue/PR reference is `owner/repo#number`; bare numbers never join
 records across repositories. Candidate ordering is by slug and issue number.
 
@@ -37,14 +45,28 @@ repositories. A board issue lacking the initiative label is a sync finding.
 An open PR is classified as initiative work only when it is on the master
 board or explicitly closes/uses the issue branch of an in-scope issue.
 
-Freshness uses each repository's own integration branch. A missing checkout or
+For isolated worktrees, `--checkout-root /absolute/path/to/launch-checkout`
+explicitly overrides the checkout-layout base. Every origin must match its
+manifest slug, or GitHub must resolve that origin to the exact canonical slug;
+failed redirect verification makes the checkout incomplete without changing its
+remote. Freshness uses each repository's own integration branch. A missing checkout or
 unavailable source is reported rather than interpreted as an empty board or
 queue. `--no-fetch`, `--operator LOGIN`, and `--comments brief|full` remain
 available in multi-repository mode. The procedure only reads remote state and
 local checkout state; optional fetch updates Git metadata but no tracked file,
 branch, issue, PR, or project field. It does not claim, reconcile, pick up, or
-authorize work. The master `/next` guard in an adopting repository stays in
-place until C1b and the separate adoption validation finish.
+authorize work. Adopting repositories retain their activation gates until their separate
+validation is complete. Manifest presence does not activate work pickup.
+
+Expired agent-owned feature leases are reported after 24 hours even when an
+open PR or issue branch exists, including AI-owned Awaiting code review work.
+The report preserves evidence and recommends checking active sessions and
+arbitrating recovery; it performs no recovery writes. Stakeholder-waiting cards
+are never expired by age alone. An active PR preserves feature ownership; it
+never automatically triggers a review handoff. An existing owning feature card
+covers its implementation PRs across agent and stakeholder stages. Gate payload
+interpretation, claim arbitration, recovery, and delivery remain the caller's
+responsibility. Complete reporting alone does not approve or complete a feature.
 
 Produces the orientation *report* for the `next` procedure without acting on anything. It is implemented by `process/kanban_check.sh`, which a `next` session runs directly; this file is that script's specification and the procedure to follow by hand if it cannot run. Either way it is directly useful to a human who wants a board snapshot with nothing touched.
 

@@ -13,3 +13,14 @@ In this repository's managed Codex sandbox, run the procedure's required
 `git fetch` and every `gh` CLI command with escalated permissions on the first
 attempt. The sandbox cannot write `.git/FETCH_HEAD` or reach the GitHub API, so
 do not spend a probe call retrying either command inside the sandbox first.
+
+
+For explicitly installed GitHub multi-repository coordination, run orientation
+with `process/kanban_check.sh --manifest plan/repositories.json`; add the
+validated `--checkout-root` when using an isolated worktree. Retain the ordinary
+invocation for single-repository projects and other platforms. An incomplete
+report permits no selection or mutations. Manifest presence alone does not
+activate coordination.
+Pass qualified `owner/repo#number` selection arguments unchanged and follow
+the GitHub procedure's guarded claim protocol. `coordination_actions.py`
+defaults to dry-run; only explicit authorized execution may apply a claim.
