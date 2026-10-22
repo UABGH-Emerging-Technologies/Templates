@@ -2,6 +2,8 @@
 
 import importlib.util
 import unittest
+import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -32,6 +34,11 @@ def card(slug, number, status, assignee, kind="issues"):
 
 class OrientationTests(unittest.TestCase):
     def setUp(self):
+        deny_commands = patch.object(
+            MODULE.subprocess, "run", side_effect=AssertionError("offline fixture attempted a command")
+        )
+        deny_commands.start()
+        self.addCleanup(deny_commands.stop)
         self.slugs = ("Example/product", "Example/library", "Example/lead")
         self.manifest = {
             "schema_version": 1, "project_owner": "Example", "project_number": 12,
@@ -58,6 +65,7 @@ class OrientationTests(unittest.TestCase):
 
     def render(self, board=None, unavailable=None, bad_comments=None, pr_refs=None,
                review_md=""):
+        self.read_commands = []
         board = self.board if board is None else board
         unavailable = unavailable or set()
         bad_comments = bad_comments or set()
@@ -86,6 +94,7 @@ class OrientationTests(unittest.TestCase):
                                   "worktrees": ["/tmp/checkout"], "branches": [branch]})
 
         def read_command(*args, **_kwargs):
+            self.read_commands.append(args)
             if args[:2] == ("git", "show"):
                 return MODULE.Source(review_md)
             return MODULE.Source("")
@@ -146,7 +155,7 @@ class OrientationTests(unittest.TestCase):
             (self.slugs[1], 99): {(self.slugs[1], 7)}
         })
         self.assertTrue(complete)
-        self.assertIn("in-scope open PR Example/library#99", report)
+        self.assertNotIn("lacks an owning feature card", report)
         self.assertNotIn("Example/product#99", report)
 
     def test_pr_list_failure_is_not_an_empty_list(self):
@@ -187,7 +196,7 @@ class OrientationTests(unittest.TestCase):
         self.assertTrue(items[0][2])
         self.assertFalse(items[1][2])
 
-    def test_cross_repository_pr_prevents_false_stale_claim(self):
+    def test_expired_cross_repository_pr_feature_is_recoverable(self):
         self.board.append(card(self.slugs[0], 7, "Agent working", "alice"))
         self.prs[self.slugs[1]] = [{
             "number": 99, "state": "open", "body": "", "head": {"ref": "other"},
@@ -196,8 +205,10 @@ class OrientationTests(unittest.TestCase):
             (self.slugs[1], 99): {(self.slugs[0], 7)}
         })
         self.assertTrue(complete)
-        self.assertIn("Example/product#7 Agent working with open PR", report)
-        self.assertNotIn("STALE CLAIM Example/product#7", report)
+        self.assertIn("EXPIRED FEATURE LEASE Example/product#7", report)
+        self.assertIn("open PRs=1", report)
+        self.assertIn("preserve all work", report)
+        self.assertNotIn("set Awaiting code review", report)
 
     def test_unrelated_board_repository_does_not_invalidate_report(self):
         board = self.board + [card("Other/maintenance", 7, "Todo", "alice")]
@@ -218,6 +229,40 @@ class OrientationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 MODULE.load_manifest(path)
 
+    def test_explicit_review_queue_ref_is_exact_and_visible(self):
+        import json
+
+        revision = "a5c2f0866e866afc6da287ae7dbb954f5010a1af"
+        self.manifest["review_queue_ref"] = revision
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "repositories.json"
+            path.write_text(json.dumps(self.manifest), encoding="utf-8")
+            self.assertEqual(revision, MODULE.load_manifest(path)["review_queue_ref"])
+        report, complete = self.render()
+        self.assertTrue(complete)
+        self.assertIn(("git", "show", f"{revision}:HUMAN-REVIEW-QUEUE.md"), self.read_commands)
+        self.assertIn(f"documentation ref: {revision} (explicit branch-local commit)", report)
+        self.assertIn(f"documentation ref {revision} (explicit branch-local commit): complete", report)
+        self.assertNotIn(("git", "show", "origin/main:HUMAN-REVIEW-QUEUE.md"), self.read_commands)
+
+    def test_review_queue_defaults_to_integration_ref(self):
+        report, complete = self.render()
+        self.assertTrue(complete)
+        self.assertIn(("git", "show", "origin/main:HUMAN-REVIEW-QUEUE.md"), self.read_commands)
+        self.assertIn("documentation ref: origin/main (integration branch)", report)
+
+    def test_malformed_explicit_review_queue_ref_is_rejected(self):
+        import json
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "repositories.json"
+            for invalid in (None, "main", "a" * 39, "z" * 40, "a" * 40 + ":other", 123):
+                with self.subTest(ref=invalid):
+                    path.write_text(json.dumps({**self.manifest, "review_queue_ref": invalid}),
+                                    encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, "review_queue_ref"):
+                        MODULE.load_manifest(path)
+
     def test_operator_unavailable_suppresses_poaching(self):
         with patch.object(MODULE, "board_items", return_value=MODULE.Source(self.board)), \
              patch.object(MODULE, "rest_pages", return_value=MODULE.Source([])), \
@@ -232,7 +277,7 @@ class OrientationTests(unittest.TestCase):
         self.board.append(card(self.slugs[0], 7, "Agent working", "alice"))
         report, complete = self.render()
         self.assertTrue(complete)
-        self.assertIn("STALE CLAIM Example/product#7 — marker missing", report)
+        self.assertIn("EXPIRED FEATURE LEASE Example/product#7 — marker missing", report)
 
     def test_checked_hrq_item_with_open_gate_is_reported(self):
         self.issues[self.slugs[0]][1]["state"] = "open"
@@ -254,13 +299,105 @@ class OrientationTests(unittest.TestCase):
         self.assertIn("Example/product#7 issue CLOSED", report)
         self.assertNotIn("Example/product#7 — Product work", report.split("CANDIDATES:")[1])
 
-    def test_candidate_comment_failure_is_adjacent_to_candidate(self):
+    def test_candidate_comment_failure_suppresses_selection(self):
         report, complete = self.render(bad_comments={(self.slugs[0], 7)})
         self.assertFalse(complete)
-        self.assertIn(
-            "Example/product#7 — Product work\n    NOT CHECKABLE — issue comments unavailable",
-            report,
-        )
+        self.assertIn("Example/product#7 comments: INCOMPLETE", report)
+        candidates = report.split("CANDIDATES:")[1]
+        self.assertIn("required source incomplete; lane selection suppressed", candidates)
+        self.assertNotIn("Product work", candidates)
+
+    def test_live_pr_feature_retains_agent_ownership(self):
+        self.board[0]["status"] = "Agent working"
+        self.comments[(self.slugs[0], 7)] = [{
+            "body": "Claiming: alice · test", "created_at": datetime.now(timezone.utc).isoformat(),
+        }]
+        self.prs[self.slugs[0]] = [{
+            "number": 99, "state": "open", "body": "Closes #7", "head": {"ref": "issue-7-work"},
+        }]
+        report, complete = self.render()
+        self.assertTrue(complete)
+        self.assertIn("active feature with open PR — retain agent ownership", report)
+        self.assertNotIn("EXPIRED FEATURE LEASE Example/product#7", report)
+        self.assertNotIn("lacks an owning feature card", report)
+
+    def test_reviewing_expired_agent_feature_recovers_but_human_wait_does_not(self):
+        self.board[0]["status"] = "Awaiting code review"
+        report, complete = self.render()
+        self.assertTrue(complete)
+        self.assertIn("EXPIRED FEATURE LEASE Example/product#7", report)
+        self.board[0]["status"] = "Awaiting human action"
+        report, complete = self.render()
+        self.assertTrue(complete)
+        self.assertNotIn("EXPIRED FEATURE LEASE Example/product#7", report)
+
+    def test_checkout_origin_mismatch_stops_before_fetch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = {"slug": "Example/product", "local_path": ".", "integration_branch": "main"}
+            with patch.object(MODULE, "command", return_value=MODULE.Source(
+                "https://github.com/Other/repository.git\n"
+            )) as command:
+                result = MODULE.freshness(repo, Path(directory), False)
+            self.assertFalse(result.complete)
+            self.assertIn("does not match Example/product", result.error)
+            self.assertEqual(2, command.call_count)
+            self.assertNotIn("fetch", [part for call in command.call_args_list for part in call.args])
+
+    def test_verified_origin_redirect_is_read_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = {"slug": "Example/product", "local_path": ".", "integration_branch": "main"}
+
+            def read(*args, **kwargs):
+                if args[:4] == ("git", "remote", "get-url", "origin"):
+                    return MODULE.Source("https://github.com/OldOwner/product.git")
+                if args[:2] == ("gh", "api"):
+                    self.assertEqual("repos/OldOwner/product", args[2])
+                    return MODULE.Source("Example/product\n")
+                if args[:2] == ("git", "status"):
+                    return MODULE.Source("## main\n")
+                if args[:2] == ("git", "rev-parse"):
+                    return MODULE.Source("a" * 40)
+                return MODULE.Source("")
+
+            with patch.object(MODULE, "command", side_effect=read) as command:
+                result = MODULE.freshness(repo, Path(directory), True)
+            self.assertTrue(result.complete)
+            self.assertEqual("OldOwner/product", result.value["origin_alias"])
+            self.assertFalse(any("set-url" in call.args for call in command.call_args_list))
+
+    def test_failed_origin_redirect_suppresses_checkout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = {"slug": "Example/product", "local_path": ".", "integration_branch": "main"}
+            with patch.object(MODULE, "command", side_effect=[
+                MODULE.Source("git@github.com:OldOwner/product.git"),
+                MODULE.Source(None, "GitHub unavailable"),
+            ]) as command:
+                result = MODULE.freshness(repo, Path(directory), False)
+            self.assertFalse(result.complete)
+            self.assertIn("redirect unverified", result.error)
+            self.assertEqual(2, command.call_count)
+
+    def test_origin_url_formats_and_naive_time(self):
+        for url in ("https://github.com/Example/product.git",
+                    "git@github.com:Example/product.git",
+                    "ssh://git@github.com/Example/product.git"):
+            self.assertEqual("Example/product", MODULE.origin_slug(url))
+        self.assertIsNone(MODULE.origin_slug("https://other.example/Example/product.git"))
+        self.assertIsNone(MODULE.iso_age("2026-01-01T00:00:00"))
+
+    def test_repeated_graphql_cursor_is_incomplete(self):
+        response = {"data": {"repository": {"pullRequest": {"closingIssuesReferences": {
+            "nodes": [], "pageInfo": {"hasNextPage": True, "endCursor": "same"},
+        }}}}}
+        with patch.object(MODULE, "json_command", return_value=MODULE.Source(response)) as fetch:
+            result = MODULE.closing_references("Example/product", 1)
+        self.assertFalse(result.complete)
+        self.assertIn("repeated cursor", result.error)
+        self.assertEqual(2, fetch.call_count)
+
+    def test_nonobject_rest_record_is_incomplete(self):
+        with patch.object(MODULE, "json_command", return_value=MODULE.Source([[None]])):
+            self.assertFalse(MODULE.rest_pages("repos/Example/product/issues?state=all").complete)
 
     def test_cross_repository_hrq_back_reference(self):
         self.issues[self.slugs[1]][0]["title"] = "HRQ #5 implementation tracking"

@@ -4,6 +4,77 @@ This is the canonical procedure; the per-tool entry points (`.claude/skills/next
 
 **Run this only when the human invokes it** (the command, or asking "what's next?") — never proactively at session start: a session may be opened for anything, and the human decides when board orientation is wanted. When invoked, you are doing in batch what a live watch (Claude Code Monitor loop, or a background shell polling loop) does moment-to-moment: reconcile the board with ground truth, react to everything humans did since the last session, then choose work. Board conventions, field/option IDs, and the plumbing recipe are in AGENTS.md ("Project board" section); the rationale is in PROCESS.md.
 
+## Opt-in multi-repository execution
+
+These rules override the single-repository commands and selection examples below
+only when setup has explicitly installed a multi-repository manifest invocation.
+Without that opt-in, retain the existing single-repository path.
+
+Run `process/kanban_check.sh --manifest plan/repositories.json --comments full`.
+For an isolated worktree, add `--checkout-root /absolute/path/to/launch-checkout`
+to resolve the manifest's relative paths against the intended checkout layout.
+Every owning checkout must match its manifest slug; a historical GitHub origin
+is accepted only when GitHub resolves it to that exact canonical repository.
+Never rewrite remotes as part of orientation. Use each repository's configured
+integration branch, including non-default branches, and read its instructions
+before implementation. A report exit of 1 means required evidence is incomplete;
+exit 2 means invalid inputs. Neither permits selection, claims, reconciliation,
+no-work conclusions, or approval inference. Repair the source and rerun first.
+
+Carry `owner/repo#number` through selection, comments, dependencies, recovery,
+PR links, and all mutations. Sort candidates by repository slug then issue
+number, retain operator lanes, and reject ambiguous bare-number arguments.
+Master-board membership or the durable initiative label scopes work; a listed
+repository alone does not authorize unrelated maintenance work or gates.
+Before any dependent mutation, re-read the owning issue and complete comments.
+
+The installed guarded claim CLI defaults to a read-only dry-run:
+
+```sh
+python3 process/coordination_actions.py --manifest plan/repositories.json --issue owner/repo#123 --operator LOGIN --nonce SESSION
+```
+
+Only a user-invoked execution with complete evidence may add `--apply`. The
+`ClaimEngine` posts a nonce-stamped claim on the owning issue, re-fetches the
+complete comment stream, and arbitrates by lowest live comment ID. Losing
+sessions supersede their own marker and perform no dependent writes. Poaching
+requires an empty operator lane and reassignment only after winning. Use the
+winning engine session's `comment(...)` for guarded issue comments and
+`release(...)` at handoff. The CLI accepts only open initiative-labelled issues
+already assigned to the operator; it refuses closed gates and other lanes.
+Poaching, closed-gate processing, recovery supersession, and board edits still
+require the separate guarded procedure, including owning-issue arbitration;
+do not present this CLI as their implementation. It performs no code or merge action. Recheck required evidence before those
+remaining actions; an old report never substitutes for claim-time reads.
+
+Renew agent-owned feature activity at least every 24 hours. Recover expired
+claims in Agent working or AI-owned Awaiting code review even when a branch or
+open PR exists: check complete comments, PR links, remote branches and local
+sessions, arbitrate a fresh recovery claim, supersede the abandoned lease,
+preserve all code/PRs/assignees, and re-queue unfinished work. A live session
+prevents recovery. Never reclaim stakeholder-waiting work solely due to age.
+An open draft PR does not by itself move its feature out of Agent working;
+Awaiting code review means actual technical review. Existing owning feature
+cards track their implementation PRs. A package merge does not prove product
+adoption or feature completion. Apply any adopting project's stakeholder
+acceptance and delivery override before handing off or closing a feature.
+
+Read rejection, deferral, feedback, and ambiguous payloads before advancing any
+dependency; only a complete approval clears its stated gate. Distinguish
+gate-only decisions from acceptance of an implemented feature. Acceptance alone
+does not authorize PR promotion/merge or closing an unfinished owning feature.
+Use the decision planner to retain explicit next actors and scope; it does not
+replace stakeholder interpretation or authorize writes on incomplete evidence.
+
+An optional manifest `review_queue_ref` must be a full 40-character commit SHA.
+It explicitly selects that commit's `HUMAN-REVIEW-QUEUE.md` for branch-local
+validation; the report displays the chosen documentation ref in STEP0 and
+SOURCES. It never changes integration-branch freshness or implies that main is
+ready. Without that key, the review queue comes from the configured integration
+branch; missing documents fail incomplete with no fallback. Record branch-local
+limitations and required merges in the delivery packet. Normal installation and
+activation follow the adopting project's accepted gates, not manifest presence.
+
 ## Lane rules — which steps are global, which are scoped
 
 The operator is `gh api user --jq .login`. Cards assigned to the operator are "your lane." Scoping is **by action type**, not uniform:

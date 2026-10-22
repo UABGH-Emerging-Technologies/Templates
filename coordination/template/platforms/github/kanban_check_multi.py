@@ -66,7 +66,20 @@ def rest_pages(endpoint: str) -> Source:
         return result
     if not isinstance(result.value, list) or any(not isinstance(p, list) for p in result.value):
         return Source(None, "unexpected paginated response")
-    return Source([item for page in result.value for item in page])
+    items = [item for page in result.value for item in page]
+    if any(not isinstance(item, dict) for item in items):
+        return Source(None, "paginated response contains a non-object record")
+    if "/comments?" in endpoint:
+        if any(
+            type(item.get("id")) is not int
+            or not isinstance(item.get("created_at"), str)
+            or not isinstance(item.get("body"), (str, type(None)))
+            for item in items
+        ):
+            return Source(None, "invalid comment record")
+    elif any(type(item.get("number")) is not int for item in items):
+        return Source(None, "invalid issue or PR record")
+    return Source(items)
 
 
 def board_items(owner: str, number: int) -> Source:
@@ -83,6 +96,8 @@ def board_items(owner: str, number: int) -> Source:
             return Source(None, "board response lacks items")
         if not isinstance(data.get("totalCount"), int):
             return Source(None, "board response lacks totalCount")
+        if any(not isinstance(item, dict) for item in data["items"]):
+            return Source(None, "board response contains a non-object item")
         if len(data["items"]) == data["totalCount"]:
             return Source(data["items"])
     return Source(None, f"board truncated: {len(data['items'])} of {data['totalCount']}")
@@ -102,7 +117,9 @@ def iso_age(value: str | None, hours: bool = True) -> float | None:
         return None
     try:
         then = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
+    except (ValueError, TypeError, AttributeError):
+        return None
+    if then.tzinfo is None:
         return None
     delta = (datetime.now(timezone.utc) - then).total_seconds()
     return delta / (3600 if hours else 86400)
@@ -119,6 +136,7 @@ def load_manifest(path: Path) -> dict[str, Any]:
         not isinstance(data.get("project_owner"), str)
         or not data["project_owner"]
         or type(data.get("project_number")) is not int
+        or data["project_number"] <= 0
     ):
         raise ValueError("manifest requires project_owner and project_number")
     if not isinstance(data.get("initiative_label"), str) or not data["initiative_label"]:
@@ -147,7 +165,21 @@ def load_manifest(path: Path) -> dict[str, Any]:
     review_repo = data.get("review_queue_repository")
     if review_repo is not None and review_repo not in {r["slug"] for r in repos}:
         raise ValueError("review_queue_repository must name a listed repository")
+    review_ref = data.get("review_queue_ref")
+    if "review_queue_ref" in data and (
+        not isinstance(review_ref, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", review_ref)
+    ):
+        raise ValueError("review_queue_ref must be an explicit full 40-character commit SHA")
     return data
+
+
+def origin_slug(value: str) -> str | None:
+    """Identify a GitHub origin without trusting a checkout's directory name."""
+    match = re.fullmatch(
+        r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)"
+        r"([\w.-]+/[\w.-]+?)(?:\.git)?/?", value.strip(), re.IGNORECASE,
+    )
+    return match.group(1) if match else None
 
 
 def freshness(repo: dict[str, Any], base: Path, no_fetch: bool) -> Source:
@@ -155,6 +187,18 @@ def freshness(repo: dict[str, Any], base: Path, no_fetch: bool) -> Source:
     path = (base / repo["local_path"]).resolve()
     if not path.is_dir():
         return Source(None, f"checkout unavailable: {path}")
+    origin = command("git", "remote", "get-url", "origin", cwd=path)
+    if not origin.complete:
+        return Source(None, "checkout origin unavailable")
+    origin_identity = origin_slug(origin.value)
+    alias_verified = False
+    if (origin_identity or "").lower() != repo["slug"].lower():
+        if origin_identity is None:
+            return Source(None, f"checkout origin does not match {repo['slug']}")
+        canonical = command("gh", "api", f"repos/{origin_identity}", "--jq", ".full_name")
+        if not canonical.complete or canonical.value.strip().lower() != repo["slug"].lower():
+            return Source(None, f"checkout origin does not match {repo['slug']}; redirect unverified")
+        alias_verified = True
     branch = repo["integration_branch"]
     if not no_fetch:
         fetched = command("git", "fetch", "origin", branch, "-q", cwd=path)
@@ -178,12 +222,14 @@ def freshness(repo: dict[str, Any], base: Path, no_fetch: bool) -> Source:
         "integration": remote.value.strip(),
         "worktrees": [line for line in worktrees.value.splitlines() if line],
         "branches": [line for line in branches.value.splitlines() if line],
+        "origin_alias": origin_identity if alias_verified else None,
     })
 
 
 def labels(issue: dict[str, Any]) -> set[str]:
     """Extract REST issue label names."""
-    return {x["name"] for x in issue.get("labels", []) if isinstance(x, dict) and "name" in x}
+    return {x["name"] for x in (issue.get("labels") or [])
+            if isinstance(x, dict) and isinstance(x.get("name"), str)}
 
 
 def first_ask(body: str | None) -> str:
@@ -218,8 +264,9 @@ def closing_references(slug: str, number: int) -> Source:
         "pageInfo{hasNextPage endCursor}}}}}"
     )
     cursor: str | None = None
+    seen_cursors: set[str] = set()
     found: set[tuple[str, int]] = set()
-    while True:
+    for _ in range(100):
         args = ["gh", "api", "graphql", "-f", f"query={query}",
                 "-F", f"owner={owner}", "-F", f"name={name}",
                 "-F", f"number={number}"]
@@ -239,13 +286,17 @@ def closing_references(slug: str, number: int) -> Source:
             for node in connection["nodes"]:
                 found.add((node["repository"]["nameWithOwner"], node["number"]))
             page = connection["pageInfo"]
+            if type(page["hasNextPage"]) is not bool:
+                return Source(None, "invalid linked-development pagination flag")
             if not page["hasNextPage"]:
                 return Source(found)
             cursor = page["endCursor"]
-            if not cursor:
-                return Source(None, "linked-development page has no cursor")
+            if not isinstance(cursor, str) or not cursor or cursor in seen_cursors:
+                return Source(None, "linked-development page has missing or repeated cursor")
+            seen_cursors.add(cursor)
         except (KeyError, TypeError, AttributeError) as exc:
             return Source(None, f"invalid linked-development response: {exc}")
+    return Source(None, "linked-development pagination exceeded 100 pages")
 
 
 def qualified(slug: str, number: int) -> str:
@@ -334,6 +385,8 @@ def render(manifest: dict[str, Any], base: Path, operator: str | None, no_fetch:
             )
             if extra:
                 steps.append(f"    local branches beyond {state['branch']}: {', '.join(extra)}")
+            if state.get("origin_alias"):
+                steps.append(f"    GitHub verified origin alias: {state['origin_alias']} → {slug}")
             for worktree in state["worktrees"][1:]:
                 steps.append(f"    extra worktree: {worktree}")
         else:
@@ -349,11 +402,14 @@ def render(manifest: dict[str, Any], base: Path, operator: str | None, no_fetch:
                     for line in branch_result.splitlines() if "refs/heads/" in line
                 }
             if slug == review_repo:
+                review_ref = manifest.get("review_queue_ref") or f"origin/{repo['integration_branch']}"
+                ref_kind = "explicit branch-local commit" if manifest.get("review_queue_ref") else "integration branch"
+                steps.append(f"    human review queue documentation ref: {review_ref} ({ref_kind})")
                 markdown = record(
-                    "human review queue",
+                    f"human review queue documentation ref {review_ref} ({ref_kind})",
                     command(
                         "git", "show",
-                        f"origin/{repo['integration_branch']}:HUMAN-REVIEW-QUEUE.md",
+                        f"{review_ref}:HUMAN-REVIEW-QUEUE.md",
                         cwd=Path(state["path"]),
                     ),
                 )
@@ -453,7 +509,7 @@ def render(manifest: dict[str, Any], base: Path, operator: str | None, no_fetch:
                         )
             if status == "Todo" and card.get("responsible") == "AI agent":
                 candidates.append((slug, number, issue.get("title", card.get("title", ""))))
-            if status == "Agent working":
+            if status in {"Agent working", "Awaiting code review"} and card.get("responsible") == "AI agent":
                 trail = comments.get((slug, number))
                 branches = remote_branches.get(slug)
                 if (
@@ -466,7 +522,11 @@ def render(manifest: dict[str, Any], base: Path, operator: str | None, no_fetch:
                         "comments, PRs, links, or branches unavailable"
                     )
                 else:
-                    markers = [c for c in trail if MARKER.match(c.get("body") or "")]
+                    markers = [
+                        c for c in trail
+                        if re.match(r"^(?:Claiming|Claim|Agent):", c.get("body") or "")
+                        and "(superseded" not in (c.get("body") or "")
+                    ]
                     marker = markers[-1] if markers else None
                     age = iso_age(marker.get("created_at")) if marker else float("inf")
                     linked_prs = [
@@ -484,16 +544,18 @@ def render(manifest: dict[str, Any], base: Path, operator: str | None, no_fetch:
                         sync.append(
                             f"  {identity} stale claim NOT CHECKABLE — invalid marker time"
                         )
-                    elif age > STALE_HOURS and not linked_prs and not has_branch:
+                    elif age > STALE_HOURS:
                         sync.append(
-                            f"  STALE CLAIM {identity} — "
+                            f"  EXPIRED FEATURE LEASE {identity} — "
                             f"marker {str(int(age)) + 'h old' if marker else 'missing'}; "
-                            "no linked open PR or issue branch; verify then re-queue; "
+                            f"open PRs={len(linked_prs)}, issue branch={'present' if has_branch else 'absent'}; "
+                            "verify active sessions, arbitrate recovery, preserve all work then re-queue; "
                             f"marker: {(marker or {}).get('body', 'none')!r}"
                         )
                     elif linked_prs:
                         sync.append(
-                            f"  {identity} Agent working with open PR — set Awaiting code review"
+                            f"  {identity} active feature with open PR — retain agent ownership "
+                            "until integration, technical review, and demo are ready"
                         )
         else:
             pr = prs.get((slug, number))
@@ -596,11 +658,10 @@ def render(manifest: dict[str, Any], base: Path, operator: str | None, no_fetch:
             continue
         tracked = any(
             (s, n, "issues") in scoped_cards
-            and scoped_cards[(s, n, "issues")].get("status") == "Awaiting code review"
             for s, n in links
         )
         if not tracked:
-            sync.append(f"  in-scope open PR {qualified(slug, number)} lacks a review card")
+            sync.append(f"  in-scope open PR {qualified(slug, number)} lacks an owning feature card")
 
     if failed:
         fallback = "  UNKNOWN — required source incomplete; no no-work or approval inference"
@@ -616,8 +677,9 @@ def render(manifest: dict[str, Any], base: Path, operator: str | None, no_fetch:
         if board and operator in (scoped_cards[(s, n, "issues")].get("assignees") or [])
     ]
     selection = mine if mine else candidates
-    if operator is None:
-        lines.append("  UNKNOWN — operator unavailable; lane selection suppressed")
+    if operator is None or failed:
+        reason = "operator unavailable" if operator is None else "required source incomplete"
+        lines.append(f"  UNKNOWN — {reason}; lane selection suppressed")
         lines.append("=== END KANBAN-CHECK REPORT ===")
         return "\n".join(lines) + "\n", False
     if selection:
@@ -646,6 +708,8 @@ def main() -> int:
     """Parse the opt-in CLI and print the complete or explicitly partial report."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--checkout-root", type=Path,
+                        help="resolve manifest checkout paths from the validated launch checkout")
     parser.add_argument("--operator")
     parser.add_argument("--no-fetch", action="store_true")
     parser.add_argument("--comments", choices=("brief", "full"), default="brief")
@@ -656,7 +720,9 @@ def main() -> int:
         print(f"invalid manifest: {exc}", file=sys.stderr)
         return 2
     manifest_dir = args.manifest.resolve().parent
-    checkout_root = manifest_dir.parent if manifest_dir.name == "plan" else manifest_dir
+    checkout_root = args.checkout_root or (
+        manifest_dir.parent if manifest_dir.name == "plan" else manifest_dir
+    )
     report, complete = render(manifest, checkout_root, args.operator,
                               args.no_fetch, args.comments == "full")
     print(report, end="")

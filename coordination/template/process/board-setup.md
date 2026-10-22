@@ -28,6 +28,57 @@ Then ask the human up front, in one batch (plus anything the checks surfaced):
 
 Do not proceed past a failed assumption on your own judgment — the human said what they meant by `plan/` and `explorations/`; if the shape on disk doesn't match, that's their call, not yours.
 
+## GitHub multi-repository setup — explicit opt-in
+
+Apply this section only to GitHub. A `plan/repositories.json` manifest, an
+approved plan naming multiple owning repositories, or an explicit human
+declaration of multi-repository coordination triggers validation before any
+board seed or installation. Presence of a manifest alone never activates work
+pickup. When a manifest conflicts with a single-repository plan or declaration,
+stop and ask the human to clarify the intended scope; do not silently choose
+multi-repository mode or discard the manifest. This scope decision is separate
+from routine technical implementation approval.
+
+For confirmed multi-repository scope, validate or scaffold a version-1 manifest
+with the approved master project owner/number, durable initiative label, and at
+least two unique `owner/repo` slugs. Every repository needs a relative
+`local_path` and explicit `integration_branch`. Use approved source inventory;
+ask for genuinely unknown paths, integration branches or initiative boundaries.
+Do not infer integration branches from repository defaults. Parse the finished
+manifest with the installed reporter's `load_manifest` before any GitHub query.
+Validate origins against slugs, accepting a historical origin only when GitHub
+resolves it to the exact canonical slug. Missing checkouts, refs or unavailable
+reads are incomplete evidence, not empty repositories. Do not modify independent
+maintenance boards or process unrelated gates in a listed repository.
+
+Step 5 must additionally install GitHub's `kanban_check_multi.py` and
+`coordination_actions.py` beside the existing shell script before removing the
+staging tree. Preserve the shell's explicit `--manifest` dispatch and its
+unchanged single-repository invocation. Record `process/kanban_check.sh
+--manifest plan/repositories.json` in the installed GitHub procedures and all
+three tools' next and kanban-check wrappers. Pass `--checkout-root` explicitly
+when validating an isolated worktree against a separate launch checkout layout.
+Next wrappers carry qualified issue arguments; kanban-check wrappers stay
+strictly read-only and never call the guarded action CLI. Install all wrappers
+regardless of the tools used by the current operator.
+
+`review_queue_repository` optionally selects the repository holding the review
+queue. Optional `review_queue_ref` is a full 40-character commit SHA for explicit
+branch-local document validation; reports display that exact source. It does
+not establish integration-branch readiness. Without it, use the configured
+integration branch with no fallback. Keep any temporary pinned-document
+limitations and required installation merges explicit in the delivery packet.
+
+Run offline reporter and guarded-action fixtures with mutation transports
+stubbed, then a complete live read-only report for the confirmed manifest.
+Validate claims with captured/synthetic mutations before enabling actual writes;
+the action CLI defaults to dry-run and requires an explicitly enabled manifest
+plus `--apply` for a real claim. Activation must satisfy the adopting project's
+gates, complete-evidence checks and existing authorization. Do not silently set
+`automation_enabled` merely because setup found a manifest. For confirmed
+single-repository scope with no conflicting manifest, install only the existing
+single-repository invocation; no multi-repository query or activation is needed.
+
 ## 1. Ingest plan/ and explorations/
 
 - Inventory both trees recursively. Read natively: md, txt, transcripts, PDFs, and **images (whiteboard photos, UML) — read them visually**. Convert docx/pptx via `pandoc` (or macOS `textutil`) when available; if files remain unreadable, list them and ask the human for exports **before** drafting — a plan built on half the inputs looks complete and isn't.
